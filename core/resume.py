@@ -206,7 +206,8 @@ def generate_resume(job: dict, profile: dict) -> tuple[str, str]:
     lines.append("")
     lines.append(f"> 定制投递：{job.get('company', '—')} · {job.get('title', '—')}｜生成方式：基于真实材料重排与措辞对齐，事实未经允许不增不减")
     lines.append("")
-    lines.append(f"**联系方式**：{identity['phone']}｜{identity['email']}｜{identity['grade']}（{identity['cohort_label']}）  [ev:ev_identity]")
+    lines.append(f"**联系方式**：{identity.get('phone', '—')}｜{identity.get('email', '—')}｜"
+                 f"{identity.get('grade', '')}（{identity.get('cohort_label', '应届生')}）  [ev:ev_identity]")
     lines.append("")
     lines.append("## 教育背景")
     lines += _edu(profile)

@@ -9,7 +9,7 @@ LLM（SKILL.md 流程）据此展开成完整答案——答案仍受 factcheck 
 from __future__ import annotations
 
 from core import scorer
-from core.resume import EXP_TO_EV, _jd_text, _relevance
+from core.resume import _ev_of, _jd_text, _relevance
 
 
 def build_question_set(job: dict, profile: dict) -> dict:
@@ -23,7 +23,7 @@ def build_question_set(job: dict, profile: dict) -> dict:
 
     sec1 = {"name": "一、项目深挖（必考，围绕你简历中最相关的经历）", "questions": []}
     for e in top_exps:
-        ev = EXP_TO_EV.get(e["id"], "ev_self_eval")
+        ev = _ev_of(e["id"], profile)
         sec1["questions"].append({
             "q": f"请用2分钟介绍「{e['name']}」中你个人负责的部分，以及最难的坎怎么迈过去的？",
             "anchor": f"[ev:{ev}]",
