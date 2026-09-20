@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """test_scorer_quality.py — 评分质量回归测试（真实数据暴露的缺陷，逐个锁死）
 
 背景：2026-09-20 真实库（13k+ 岗位）实测暴露三类误判——

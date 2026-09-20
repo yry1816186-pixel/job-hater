@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """test_filters_scoring.py — 校招过滤层与五维评分层单元测试
 
 运行：python3 tests/test_filters_scoring.py   （期望 ALL PASSED）

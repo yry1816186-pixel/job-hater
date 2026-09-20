@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """test_factcheck.py — 真实性校验对抗测试集 + 全引擎回归
 
 运行：python3 tests/test_factcheck.py   （期望输出 ALL TESTS PASSED）

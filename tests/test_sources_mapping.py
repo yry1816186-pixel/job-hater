@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """test_sources_mapping.py — 信源映射 + 近似去重测试集
 
 运行：python3 tests/test_sources_mapping.py   （期望输出 ALL TESTS PASSED）
@@ -14,8 +13,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "adapters" / "sources"))
 
-from core import ingest, store  # noqa: E402
 from mapping import jobitem_to_raw, xiaozhao_to_raw  # noqa: E402
+
+from core import ingest, store  # noqa: E402
 
 
 def check(name: str, cond: bool, detail: str = "") -> bool:

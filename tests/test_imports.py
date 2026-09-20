@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """test_imports.py — 全核心模块导入与最小功能烟测
 
 背景：resume.py 重构删除 EXP_TO_EV 后，interview.py 的导入炸了，
@@ -28,7 +27,18 @@ MINIMAL_JOB = {"id": "t1", "title": "测试岗", "company": "某公司", "city":
 
 def main() -> int:
     ok = True
-    from core import cli, dashboard, factcheck, ingest, interview, resume, risk, scorer, store, upskill  # noqa: F401
+    from core import (  # noqa: F401
+        cli,
+        dashboard,
+        factcheck,
+        ingest,
+        interview,
+        resume,
+        risk,
+        scorer,
+        store,
+        upskill,
+    )
     print("✅ 全部 core 模块可导入（含 cli 的全量 import 路径）")
 
     s = scorer.score_job(MINIMAL_JOB, MINIMAL_PROFILE)
