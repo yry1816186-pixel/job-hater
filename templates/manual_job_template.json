@@ -1,0 +1,30 @@
+[
+  {
+    "title": "岗位名称（必填）",
+    "company": "公司名（必填）",
+    "city": "南京",
+    "salary": "12-18K·14薪",
+    "experience_required": "经验不限",
+    "education_required": "本科",
+    "description": "岗位职责与任职要求原文粘贴到这里。技能关键词（如：Python、LLM、React）会被评分引擎自动识别。",
+    "keywords": ["校招", "应届生"],
+    "url": "岗位链接（可选）",
+    "deadline": "2026-10-31",
+    "published_at": "2026-09-20",
+    "source_platform": "manual"
+  },
+  {
+    "title": "AI产品经理（校招）",
+    "company": "示例科技有限公司",
+    "city": "上海",
+    "salary": "15-25K",
+    "experience_required": "无经验",
+    "education_required": "本科及以上",
+    "description": "负责AI产品的需求分析与产品设计，参与大模型应用落地。要求：熟悉LLM/Agent技术边界，了解前端与数据分析，专业不限，有交互设计能力优先。",
+    "keywords": ["校招", "2027届", "培养体系"],
+    "url": "",
+    "deadline": "",
+    "published_at": "2026-09-18",
+    "source_platform": "manual"
+  }
+]

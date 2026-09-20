@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "_comment": "演示/测试夹具：仅用于 tests/ 与 ingest 冒烟，绝不写入 data/ 真实库。公司与人名均为虚构。",
+  "jobs": [
+    {
+      "id": "09181392c85b389d",
+      "source_platform": "manual",
+      "title": "AI产品经理（校招）",
+      "company": "示例科技有限公司",
+      "company_type": null,
+      "department": null,
+      "city": "上海",
+      "salary": "15-25K",
+      "salary_min_k": 15,
+      "salary_max_k": 25,
+      "experience_required": "无经验",
+      "education_required": "本科及以上",
+      "description": "负责AI产品的需求分析与产品设计，参与大模型应用落地。要求：熟悉LLM/Agent技术边界，了解前端与数据分析，专业不限，有交互设计能力优先。",
+      "keywords": ["校招", "2027届", "培养体系"],
+      "url": "",
+      "published_at": "2026-09-18",
+      "deadline": null,
+      "extras": {}
+    }
+  ]
+}

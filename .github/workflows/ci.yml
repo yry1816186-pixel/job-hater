@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: 语法检查（全部 Python 文件）
+        run: |
+          find core mcp adapters -name '*.py' -print0 | xargs -0 -n1 python3 -m py_compile
+      - name: 测试套件（自运行脚本，全部输出 ALL TESTS PASSED 才算过）
+        run: |
+          set -e
+          for t in tests/test_*.py; do
+            echo "== $t =="
+            python3 "$t"
+          done
+      - name: MCP server 握手与工具清单
+        run: |
+          echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | python3 mcp/job_agent_mcp.py | grep -q protocolVersion
+          echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | python3 mcp/job_agent_mcp.py | grep -q fetch_sources
+      - name: 数据本地性静态检查（core 不得含网络调用）
+        run: |
+          ! grep -rnE "urllib|http\.client|requests|socket|httpx" core/
+      - name: 个人事实零字面量检查（core 不得硬编码用户相关人名/学校）
+        run: |
+          ! grep -rn "袁荣岳\|南京航空航天\|南航" core/

@@ -1,0 +1,22 @@
+# ===== 用户个人数据：绝不入库（本仓库是开源项目，个人材料只存在本地）=====
+data/
+!templates/
+# data/ 整体本地化，仅保留随仓库分发的模板（在 templates/，见下）
+
+# ===== 上游开源项目归档（体积大且有各自协议；用 scripts/bootstrap_upstream.sh 重新拉取）=====
+repos/
+
+# ===== 运行产物 =====
+.venv-sources/
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+
+# ===== 本地环境与凭证 =====
+.env
+*.local
+.mcp.json.bak*
+
+# 本机 MCP 配置（含机器特定路径，不入库；用 .mcp.json.example 复制）
+.mcp.json
