@@ -27,6 +27,8 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "pydantic>=2.6",
+    "httpx>=0.27",
+    "keyring>=24",
 ]
 
 [project.optional-dependencies]
@@ -63,3 +65,7 @@ target-version = "py310"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 惯用法：Depends()/Query() 在参数默认位调用是官方模式
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
