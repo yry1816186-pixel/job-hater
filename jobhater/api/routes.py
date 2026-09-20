@@ -129,6 +129,12 @@ class JobsImportIn(BaseModel):
     source_id: str = "manual"
 
 
+class PasteIn(BaseModel):
+    text: str
+    url: str | None = None
+    save: bool = False  # true=解析并直接入库；false=只出草稿供用户确认
+
+
 class MatchRunIn(BaseModel):
     profile_id: str
     preset_id: str | None = None
@@ -327,6 +333,24 @@ def register_routes(app: FastAPI) -> None:
     def import_jobs(body: JobsImportIn, con=Depends(get_con)):
         stats = JobService(con).ingest(body.jobs, source_id=body.source_id)
         return stats.model_dump()
+
+    @app.post("/api/import/paste")
+    def import_paste(body: PasteIn, con=Depends(get_con)):
+        """§7 通用入口：粘贴任意 JD 文本 → 结构化草稿（默认不落库，用户确认后保存）。"""
+        from jobhater.services.sources import parse_jd_text
+
+        draft = parse_jd_text(body.text, url=body.url)
+        saved = None
+        if body.save:
+            if not draft.get("title") or not draft.get("company"):
+                raise HTTPException(
+                    422, "直接入库需要 title 与 company；请以草稿模式确认补全后再保存"
+                )
+            raw = {k: v for k, v in draft.items()
+                   if k not in ("parse_notes", "needs_review_fields")}
+            stats = JobService(con).ingest([raw], source_id="manual")
+            saved = stats.model_dump()
+        return {"draft": draft, "saved": saved}
 
     @app.get("/api/jobs")
     def search_jobs(

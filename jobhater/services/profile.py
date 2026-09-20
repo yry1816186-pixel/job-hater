@@ -155,6 +155,7 @@ class ProfileService:
         doc_hash: str | None = None,
         section: str | None = None,
         confidence: float = 1.0,
+        user_confirmed: bool = False,
     ) -> Evidence:
         ev = Evidence(
             id=new_id("ev"),
@@ -167,16 +168,18 @@ class ProfileService:
             normalized_fact=normalized_fact,
             fact_type=fact_type,
             confidence=confidence,
+            user_confirmed=user_confirmed,
         )
         with transaction(self.con):
             self.con.execute(
                 """INSERT INTO evidence(id, profile_id, source_kind, source_ref, doc_hash,
-                     section, original_text, normalized_fact, fact_type, confidence)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                     section, original_text, normalized_fact, fact_type, confidence, user_confirmed)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     ev.id, ev.profile_id, ev.source_kind.value, ev.source_ref, ev.doc_hash,
                     ev.section, ev.original_text, ev.normalized_fact,
                     ev.fact_type.value if ev.fact_type else None, ev.confidence,
+                    1 if ev.user_confirmed else 0,
                 ),
             )
         return ev

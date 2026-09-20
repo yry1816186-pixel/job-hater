@@ -26,6 +26,9 @@ def main(argv: list[str] | None = None) -> int:
     p_match.add_argument("--profile", required=True)
     p_match.add_argument("--preset")
     p_match.add_argument("--limit", type=int, default=100)
+    p_migrate = sub.add_parser("migrate-v1", help="从 v1 JSON 数据目录一次性迁移")
+    p_migrate.add_argument("old_data_dir", help="旧版 data/ 目录路径")
+    p_migrate.add_argument("--db", default=None, help="目标 SQLite 文件（默认数据目录）")
 
     args = parser.parse_args(argv)
     if args.data_dir:
@@ -51,6 +54,13 @@ def main(argv: list[str] | None = None) -> int:
         from jobhater.api import create_app
 
         uvicorn.run(create_app(), host=args.host, port=args.port, log_level="info")
+        return 0
+
+    if args.cmd == "migrate-v1":
+        from jobhater.migrate_v1 import migrate
+
+        report = migrate(args.old_data_dir, args.db)
+        print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
         return 0
 
     apply_all()
