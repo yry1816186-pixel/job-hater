@@ -491,6 +491,89 @@ def register_routes(app: FastAPI) -> None:
         except Exception as e:
             raise _err(e) from e
 
+    # ---------- 简历 ----------
+
+    from jobhater.services.resume import ResumeError, ResumeService  # noqa: WICS
+
+    @app.post("/api/resumes/generate")
+    def generate_master(body: dict, con=Depends(get_con)):
+        try:
+            rs = ResumeService(con)
+            rid, vid = rs.build_master_from_profile(body["profile_id"])
+            report = rs.factcheck(vid)
+            return {"resume_id": rid, "version_id": vid, "factcheck": report}
+        except Exception as e:
+            raise _err(e) from e
+
+    @app.get("/api/resumes")
+    def list_resumes(profile_id: str, con=Depends(get_con)):
+        return ResumeService(con).list_resumes(profile_id)
+
+    @app.get("/api/resumes/{resume_id}/versions")
+    def list_versions(resume_id: str, con=Depends(get_con)):
+        try:
+            return ResumeService(con).list_versions(resume_id)
+        except ResumeError as e:
+            raise _err(e) from e
+
+    @app.get("/api/resume-versions/{version_id}")
+    def get_version(version_id: str, con=Depends(get_con)):
+        try:
+            return ResumeService(con).get_version(version_id)
+        except ResumeError as e:
+            raise _err(e) from e
+
+    @app.post("/api/resumes/{resume_id}/versions")
+    def new_version(resume_id: str, body: dict, con=Depends(get_con)):
+        try:
+            rs = ResumeService(con)
+            vid = rs.commit_version(
+                resume_id, body.get("sections") or {},
+                bullets_provenance=body.get("bullets_provenance"),
+                note=body.get("note"),
+            )
+            return {"version_id": vid, "factcheck": rs.factcheck(vid)}
+        except Exception as e:
+            raise _err(e) from e
+
+    @app.post("/api/resume-versions/{version_id}/factcheck")
+    def run_factcheck(version_id: str, con=Depends(get_con)):
+        try:
+            return ResumeService(con).factcheck(version_id)
+        except ResumeError as e:
+            raise _err(e) from e
+
+    @app.post("/api/resume-versions/{version_id}/final")
+    def mark_final(version_id: str, con=Depends(get_con)):
+        try:
+            return ResumeService(con).mark_final(version_id)
+        except ResumeError as e:
+            raise _err(e) from e
+
+    @app.get("/api/resume-versions/{version_id}/export")
+    def export_version(version_id: str, fmt: str = "md", con=Depends(get_con)):
+        if fmt not in ("md", "json", "html", "pdf", "docx"):
+            raise HTTPException(422, "fmt ∈ md/json/html/pdf/docx")
+        try:
+            path = ResumeService(con).export_file(version_id, fmt)
+        except ResumeError as e:
+            raise HTTPException(422, str(e)) from e
+        from fastapi.responses import FileResponse, PlainTextResponse
+
+        if fmt in ("md", "html", "json"):
+            return PlainTextResponse(
+                path.read_text(encoding="utf-8"),
+                media_type="text/plain; charset=utf-8",
+            )
+        return FileResponse(path, filename=path.name)
+
+    @app.get("/api/resume-versions/{version_id}/diff")
+    def diff_versions(version_id: str, against: str, con=Depends(get_con)):
+        try:
+            return ResumeService(con).diff_versions(against, version_id)
+        except ResumeError as e:
+            raise _err(e) from e
+
     # ---------- 反馈 ----------
 
     @app.post("/api/feedback")

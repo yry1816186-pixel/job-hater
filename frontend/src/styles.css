@@ -1,0 +1,210 @@
+/* Job Hater 设计系统：中文产品优先，无装饰渐变，信息密度克制 */
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --ink: #1c1b18;
+  --muted: #6f6a61;
+  --line: #e3dfd7;
+  --accent: #0f6b52;        /* 深松绿：唯一主色 */
+  --accent-ink: #ffffff;
+  --accent-soft: #e8f2ee;
+  --danger: #b3362b;
+  --danger-soft: #f9ecea;
+  --warn: #8a5a2b;
+  --warn-soft: #f7efe4;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(28, 27, 24, 0.08);
+  font-size: 15px;
+}
+[data-theme='dark'] {
+  --bg: #171614;
+  --surface: #201f1c;
+  --ink: #ece9e2;
+  --muted: #a09a8f;
+  --line: #383530;
+  --accent: #3ea981;
+  --accent-ink: #0e1512;
+  --accent-soft: #1d2b26;
+  --danger: #e06c5f;
+  --danger-soft: #2e211f;
+  --warn: #d1a05f;
+  --warn-soft: #2a2419;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font-family: 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; }
+
+/* 布局 */
+.app { display: grid; grid-template-columns: 208px 1fr; min-height: 100vh; }
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  padding: 18px 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.brand {
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 1px;
+  padding: 4px 10px 14px;
+  color: var(--ink);
+}
+.brand small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); letter-spacing: 0; }
+.nav-link {
+  display: block;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.nav-link:hover { background: var(--bg); color: var(--ink); text-decoration: none; }
+.nav-link.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.sidebar .spacer { flex: 1; }
+.main { padding: 26px 32px; max-width: 1080px; width: 100%; margin: 0 auto; }
+
+h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: 0.5px; }
+h2 { font-size: 17px; margin: 26px 0 10px; }
+.page-sub { color: var(--muted); font-size: 13.5px; margin: 0 0 20px; }
+
+/* 组件 */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.between { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.btn {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { opacity: 0.9; }
+.btn.danger { color: var(--danger); }
+.btn.small { padding: 3px 10px; font-size: 13px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+input[type='text'], input[type='number'], input[type='password'], textarea, select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  width: 100%;
+}
+textarea { min-height: 120px; resize: vertical; font-family: inherit; }
+label.field { display: block; margin-bottom: 10px; font-size: 13.5px; color: var(--muted); }
+label.field > input, label.field > textarea, label.field > select { margin-top: 4px; color: var(--ink); }
+
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--surface);
+}
+.tag.green { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.tag.red { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+.tag.amber { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+
+.empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 42px 20px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  margin: 10px 0;
+}
+.error-box {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 10px 0;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+.loading { color: var(--muted); padding: 30px; text-align: center; }
+
+/* 岗位列表 */
+.job-item {
+  display: block;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+}
+.job-item:hover { background: var(--bg); text-decoration: none; }
+.job-item .title { font-weight: 600; font-size: 15.5px; }
+.job-item .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.score {
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 匹配解释 */
+.dim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.dim-card h3 { margin: 0 0 6px; font-size: 14.5px; display: flex; justify-content: space-between; }
+.dim-card ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; }
+.dim-card .unc { color: var(--warn); font-size: 13px; }
+
+/* 看板 */
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: 240px; gap: 12px; overflow-x: auto; padding-bottom: 10px; }
+.board-col h3 { font-size: 13.5px; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+.board-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 13.5px;
+  box-shadow: var(--shadow);
+}
+.board-card b { display: block; font-size: 14px; }
+
+table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.data th { text-align: left; color: var(--muted); font-weight: 600; font-size: 13px; border-bottom: 2px solid var(--line); padding: 8px 10px; }
+table.data td { border-bottom: 1px solid var(--line); padding: 8px 10px; vertical-align: top; }
+
+.kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 14px; font-size: 14px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+
+.theme-toggle { background: none; border: none; color: var(--muted); cursor: pointer; padding: 6px; }
+.stat-row { display: flex; gap: 26px; margin: 14px 0; flex-wrap: wrap; }
+.stat b { display: block; font-size: 24px; color: var(--accent); }
+.stat span { color: var(--muted); font-size: 13px; }
+
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .main { padding: 18px; }
+}
