@@ -24,7 +24,8 @@ classifiers = [
     "Topic :: Office/Business",
 ]
 dependencies = [
-    "fastapi>=0.110",
+    # fastapi>=0.141 是与 starlette>=1.0 兼容的最低线（低版本与 mcp 共存会崩）
+    "fastapi>=0.141",
     "uvicorn>=0.29",
     "pydantic>=2.6",
     "httpx>=0.27",
@@ -32,6 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mcp = ["mcp>=1.29"]
 # 中文词级分词（FTS5 检索质量增强；缺失时自动退回字符 bigram，功能不缺失）
 segment = ["jieba>=0.42"]
 # 简历 DOCX 导出
@@ -47,6 +49,7 @@ dev = [
 
 [project.scripts]
 job-hater = "jobhater.cli:main"
+job-hater-mcp = "jobhater.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["jobhater*"]
