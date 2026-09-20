@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """cli.py — Campus-Job-Agent 统一命令行入口
 
-六个用户命令与 SKILL.md 一一对应：
+六个用户命令与 SKILL.md 一一对应（profile/search/apply/interview/pipeline/upskill），
+另有底层支撑命令（ingest/fetch/sources/dashboard/blacklist）：
   profile  导入/校验用户画像
   ingest   岗位导入（JSON文件/手动模板），清洗去重+校招过滤
   search   岗位评分排序（五维+应届生加分，可解释输出）
@@ -61,14 +62,14 @@ def cmd_profile(args) -> int:
     profile = _load_profile_or_guide()
     if profile is None:
         return 1
+    ev = profile.get("evidence_index", {})
     if args.validate:
         errs = []
         raw_text = json.dumps(profile, ensure_ascii=False)
         if "（填写：" in raw_text or "此为格式演示" in raw_text:
             print("⏸ 画像还是未填写的模板（检测到「（填写：…）」占位）。")
-            print("   下一步：按 A 路径把简历发给 Claude 对话式建档，或按 B 路径手动填写后再自检。")
+            print("   下一步：把简历/成绩单发给 Claude 说「帮我建档」（对话式，自动建锚点），或手动填写模板后重新自检。")
             return 1
-        ev = profile.get("evidence_index", {})
         for s in profile.get("skills", []):
             if not s.get("evidence"):
                 errs.append(f"技能「{s['name']}」无证据引用")
@@ -83,8 +84,10 @@ def cmd_profile(args) -> int:
             print("❌ 画像校验未通过：")
             for e in errs:
                 print(f"  - {e}")
+            print("   下一步：补齐上面列出的锚点引用后重跑自检；格式参考 templates/profile.template.json。")
             return 1
         print("✅ 画像校验通过：技能/经历均锚定 evidence_index")
+        print("   下一步：python3 core/cli.py fetch --env all 采集岗位（或粘贴 JD 导入），然后 search 出评分榜。")
     if args.show:
         ident = profile["identity"]
         edu = profile["education"][0]
@@ -92,7 +95,11 @@ def cmd_profile(args) -> int:
         print(f"目标：{'、'.join(profile['preferences']['target_roles'])}")
         print(f"城市：{'、'.join(profile['preferences']['target_cities'])}｜期望薪资下限：{profile['preferences']['salary_min_k']}K")
         print(f"技能 {len(profile['skills'])} 项｜经历 {len(profile['experiences'])} 段｜奖项 {len(profile['awards'])} 个｜证据锚点 {len(ev)} 条")
-        print(f"原始材料：{', '.join(str(p.name) for p in (store.DATA / 'profile' / 'raw').glob('*'))}")
+        raws = sorted((store.DATA / 'profile' / 'raw').glob('*')) if (store.DATA / 'profile' / 'raw').exists() else []
+        if raws:
+            print(f"原始材料：{', '.join(str(p.name) for p in raws)}")
+        else:
+            print("原始材料：（data/profile/raw/ 为空——把简历/证明等原件放进去，锚点才有溯源对象）")
     return 0
 
 
@@ -104,12 +111,20 @@ def cmd_ingest(args) -> int:
         return 1
     except (ValueError, json.JSONDecodeError) as e:
         print(f"❌ JSON 解析失败：{e}")
+        print("   下一步：用 templates/manual_job_template.json 作为格式参照（数组或含 jobs 键的对象）；")
+        print("   或者直接把 JD 原文发给 Claude 说「导入这个岗位」，由 Claude 负责结构化。")
         return 1
     stats = ingest.ingest_jobs(raw_jobs, source_platform=args.source)
-    print(f"📥 导入完成（来源：{args.source}）：收到 {stats['received']}｜入库 {stats['added']}｜去重 {stats['deduped']}"
+    print(f"📥 导入完成（来源：{args.source}）：收到 {stats['received']}｜入库 {stats['added']}"
+          f"｜精确去重 {stats['deduped']}｜近似去重 {stats.get('near_duped', 0)}"
           f"｜补全JD {stats.get('enriched', 0)}｜过滤拒绝 {stats['rejected']}")
     for d in stats["details"]:
-        mark = {"入库": "✅", "去重跳过": "♻️"}.get(d["result"], "🚫")
+        if d["result"] in ("入库", "去重并补全JD"):
+            mark = "✅"
+        elif "去重跳过" in d["result"] or "近似去重" in d["result"]:
+            mark = "♻️"
+        else:
+            mark = "🚫"
         print(f"  {mark} {d['title']} @ {d['company']} — {d['result']}")
     if stats["rejected"]:
         print("  （被拒岗位保留在 jobs.json 中 status=rejected 留档，原因透明可查）")
@@ -138,8 +153,8 @@ def cmd_search(args) -> int:
     jobs = ingest.list_active_jobs()
     if not jobs:
         print("📭 岗位库为空。")
-        print("   正常路径：运行平台适配器采集后 ingest 导入。")
-        print("   降级路径：手动导入 → 复制 templates/manual_job_template.json 填写后执行 ingest 命令。")
+        print("   路径一（推荐）：python3 core/cli.py fetch --env all 采集官方接口岗位（需先 bash scripts/bootstrap_upstream.sh）")
+        print("   路径二（永远可用）：把 JD 原文发给 Claude 粘贴导入，或填 templates/manual_job_template.json 后执行 ingest。")
         return 0
     results = _score_all(jobs, profile, args.min_score, args.keyword, args.city)
     if args.job:
@@ -156,7 +171,8 @@ def cmd_search(args) -> int:
                 for f in s["flags"]:
                     print(f"   {f}")
                 return 0
-        print(f"未找到岗位 id={args.job}（或被过滤）。可用 search 列表查看。")
+        print(f"❌ 未找到岗位 id={args.job}（可能不存在或已被过滤）。")
+        print("   下一步：python3 core/cli.py search 查看在榜岗位及其 id。")
         return 1
     if not results:
         print(f"没有 ≥{args.min_score} 分的岗位。降低 --min-score 或补充导入岗位。")
@@ -181,10 +197,12 @@ def cmd_apply(args) -> int:
     db = store.load("jobs")
     job = next((j for j in db["jobs"] if j["id"] == args.job or j["id"].startswith(args.job)), None)
     if not job:
-        print(f"❌ 未找到岗位 {args.job}。先 search 查看岗位列表。")
+        print(f"❌ 未找到岗位 {args.job}。")
+        print("   下一步：python3 core/cli.py search 查看在榜岗位及其 id。")
         return 1
     if job.get("status") == "rejected":
-        print(f"🚫 该岗位已被校招过滤拒绝（{job.get('reject_reason')}），不生成投递材料。")
+        print(f"🚫 该岗位已被校招过滤拒绝（原因：{job.get('reject_reason')}），不生成投递材料。")
+        print("   如认为误判：核对岗位信息后可在 data/config.json 调整 filter 规则（不建议放宽经验线）。")
         return 1
     if (job.get("extras") or {}).get("lead"):
         print("🧭 这是项目级线索（公司+批次入口），不是逐条职位 JD。")
@@ -202,7 +220,7 @@ def cmd_apply(args) -> int:
     report = factcheck.check(audited, profile)
     if not report["passed"]:
         print(factcheck.render_report(report))
-        print("→ 已阻止投递材料生成（原则三：事实不可捏造）")
+        print("→ 已阻止投递材料生成（铁律：事实不可捏造）")
         return 1
     print(factcheck.render_report(report))
 
@@ -276,7 +294,7 @@ def cmd_pipeline(args) -> int:
             print(f" {p} {v['count']}份", end="")
         print()
     if not apps:
-        print("（暂无投递记录。执行 apply --job <id> --send 后这里会出现第一行数据）")
+        print("（暂无投递记录。流程：search 挑岗位 → apply --job <id> --send；岗位库为空则先 fetch 或粘贴导入）")
     for k in order:
         if buckets.get(k):
             print(f"\n【{k}】{len(buckets[k])} 个")
@@ -320,7 +338,8 @@ def cmd_upskill(args) -> int:
     if args.job:
         job = next((j for j in db["jobs"] if j["id"] == args.job or j["id"].startswith(args.job)), None)
         if not job:
-            print(f"❌ 未找到岗位 {args.job}")
+            print(f"❌ 未找到岗位 {args.job}。")
+            print("   下一步：python3 core/cli.py search 查看在榜岗位及其 id。")
             return 1
     else:
         job = {"company": "目标方向", "title": args.keyword or "、".join(profile["preferences"]["target_roles"][:2]),
@@ -393,6 +412,8 @@ def cmd_fetch(args) -> int:
     if rc == 0:
         print("\n下一步：python3 core/cli.py search          # 看评分榜单")
         print("        python3 core/cli.py apply --job <id>  # 给心仪岗位出投递材料")
+    else:
+        print("\n⚠️ 有信源未完成（见上方输出）。已入库的数据不受影响，可直接 search 查看。")
     return rc
 
 

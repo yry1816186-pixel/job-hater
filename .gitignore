@@ -20,3 +20,11 @@ __pycache__/
 
 # 本机 MCP 配置（含机器特定路径，不入库；用 .mcp.json.example 复制）
 .mcp.json
+
+# 上游技能批量副本不入库（保留提取说明与LICENSE；完整归档经 bootstrap 脚本重建）
+skills/upstream/**
+!skills/upstream/**/
+!skills/upstream/ai-job-search/EXTRACTION_NOTES.md
+!skills/upstream/ai-job-search/LICENSE
+!skills/upstream/career-ops/EXTRACTION_NOTES.md
+!skills/upstream/career-ops/LICENSE

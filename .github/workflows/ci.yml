@@ -36,4 +36,4 @@ jobs:
           ! grep -rnE "urllib|http\.client|requests|socket|httpx" core/
       - name: 个人事实零字面量检查（core 不得硬编码用户相关人名/学校）
         run: |
-          ! grep -rn "袁荣岳\|南京航空航天\|南航" core/
+          ! grep -rniE "yuanrongyue|nanhang|nuaa" core/

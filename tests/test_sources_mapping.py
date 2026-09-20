@@ -93,6 +93,10 @@ def test_near_dup_end_to_end() -> bool:
         ok &= check("端到端：精确重复 → 原有去重仍生效", s5["deduped"] == 1)
         s6 = ingest.ingest_jobs([C2], "test")
         ok &= check("端到端：他公司贴同段JD → 判定为不同机会而非重复", s6["added"] == 1, json.dumps(s6, ensure_ascii=False))
+        PH = {"title": "岗位名称（必填）", "company": "公司名（必填）", "description": ""}
+        s_ph = ingest.ingest_jobs([PH], "test")
+        ok &= check("端到端：模板占位行被拒收（不混入真实库）", s_ph["rejected"] == 1 and s_ph["added"] == 0,
+                    json.dumps(s_ph, ensure_ascii=False))
         E = {"title": "测试工程师", "company": "戊公司", "city": "南京", "url": "https://f.example/6", "description": ""}
         E2 = {"title": "测试工程师", "company": "戊公司", "city": "南京", "url": "https://f.example/6",
               "description": "负责测试平台搭建与自动化用例设计，要求熟悉Python与CI流程，有性能测试经验者优先。" * 2}

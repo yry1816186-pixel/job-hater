@@ -1,8 +1,8 @@
 # Third-Party Notices — 上游开源项目协议与版权
 
-本系统融合了以下开源项目的设计与能力。本仓库**不随附**任何上游源码（体积与协议原因）：
-`scripts/bootstrap_upstream.sh` 会把下表项目归档到本地 `repos/`（gitignore），各项目原始
-LICENSE 随其源码保留。本文件汇总协议信息以便合规审查。
+本系统融合了以下开源项目的设计与能力。本仓库**不随附上游源码本体**（体积与协议原因）：
+`scripts/bootstrap_upstream.sh` 会把下表项目归档到本地 `repos/`（gitignore，不进入分发）。
+`skills/upstream/` 仅保留两份提取说明与对应 LICENSE 副本供溯源；本文件汇总协议信息以便合规审查。
 
 > 原则：保留所有原项目的开源协议与版权信息；无 LICENSE 的项目只使用其事实性数据（如 URL 清单）并注明来源，不复制其代码。
 

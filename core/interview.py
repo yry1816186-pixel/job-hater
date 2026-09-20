@@ -45,10 +45,24 @@ def build_question_set(job: dict, profile: dict) -> dict:
         })
     qs["sections"].append(sec2)
 
+    # 行为面问题从画像数据派生素材，代码不含任何个人事实字面量
+    major = (profile.get("education") or [{}])[0].get("major", "")
+    evid_bits = []
+    if profile.get("publications"):
+        evid_bits.append("论文")
+    if profile.get("awards"):
+        evid_bits.append("获奖项目")
+    if profile.get("experiences"):
+        evid_bits.append("项目经历")
+    campus_exps = [e.get("name", "") for e in profile.get("experiences", [])
+                   if any(k in str(e.get("type", "")) for k in ("校园", "学生", "志愿", "社团", "干部"))]
+    evidence_hint = "、".join(evid_bits) or "画像中的真实经历"
+    campus_hint = f"可用的学生经历素材：{'、'.join(campus_exps[:2])}" if campus_exps else "若无学生职务，用一次真实组织/协调经历作答，不夸大职权"
+
     sec3 = {"name": "三、行为面与文化匹配（应届生高频）", "questions": [
-        {"q": "你是设计专业，为什么投这个偏技术/跨界的岗位？（按实际岗位方向生成）", "anchor": "[ev:ev_education][ev:ev_self_eval]", "hints": ["跨学科是差异化优势不是短板", "用证据链：设计背景+EI论文+国奖项目"]},
-        {"q": "讲一次你在团队里推动事情落地的经历。", "anchor": "[ev:ev_campus]", "hints": ["团支书/青协部长经历都是素材", "突出协调与结果，不夸大职权"]},
-        {"q": "秋招季时间紧张，你如何安排学习与投递优先级？", "anchor": "[ev:ev_self_eval]", "hints": ["展示方法论（评分排序→集中投A类→按缺口学习）"]},
+        {"q": f"你主修{major or '（画像未填专业）'}，为什么投这个岗位？（按实际岗位方向说明动机与差异化优势）", "anchor": "[ev:ev_education][ev:ev_self_eval]", "hints": ["跨学科/专业差异是差异化优势不是短板", f"用证据链支撑：{evidence_hint}"]},
+        {"q": "讲一次你在团队里推动事情落地的经历。", "anchor": "[ev:ev_self_eval]", "hints": [campus_hint, "突出协调与结果，不夸大职权"]},
+        {"q": "秋招季时间紧张，你如何安排学习与投递优先级？", "anchor": "[ev:ev_self_eval]", "hints": ["展示你的真实排期方法（如：评分排序→集中投高优→按缺口学习）"]},
     ]}
     qs["sections"].append(sec3)
 

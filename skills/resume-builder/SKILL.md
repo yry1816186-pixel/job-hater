@@ -12,7 +12,7 @@ python3 core/cli.py apply --job <id>              # 生成材料（真实性校�
 python3 core/cli.py apply --job <id> --send       # + 风控闸门通过后记录投递
 ```
 
-产出（`data/out/<job_id>/`）：`resume.md`（用户版）、`resume.audited.md`（审计版含证据引用）、
+产出（`data/out/<job_id>/`）：`resume.html`（A4打印，浏览器存PDF）、`resume.md`（用户版）、`resume.audited.md`（审计版含证据引用）、
 `cover_letter.md`、`greeting.md`。
 
 ## 双Agent工作流（融合 ai-job-search 的 Drafter-Reviewer 机制）
@@ -46,7 +46,7 @@ python3 core/cli.py apply --job <id> --send       # + 风控闸门通过后记�
 
 ## 打招呼话术规范（应届生风格）
 
-- ≤120字，首句身份+最硬的匹配点（EI一作/国一奖项），中段契合点，尾句诚意+可面试时间；
+- ≤120字，首句身份+画像中真正最硬的匹配点（从 publications/awards/experiences 取，无则不提），中段契合点，尾句诚意+可面试时间；
 - 突出学习意愿，不用"精通"，不卑不亢；
 - 禁止模板腔"贵司平台大发展好"，要有岗位具体信息。
 

@@ -14,14 +14,18 @@
 | （可选）采集底座 venv | 磁盘 ~100MB | `fetch` 信源采集（wenke-radar 依赖：requests/bs4/pycryptodome/openpyxl） |
 
 ```bash
-# 第一次用（三步）：
+# 第一次用（四步）：
 python3 core/cli.py profile --init        # 1. 生成画像模板 → 填入你的真实信息（或把简历发给 Claude 对话式建档）
 python3 core/cli.py profile --validate    # 2. 自检通过（✅ 证据锚点完整）后再继续
-python3 core/cli.py fetch --env all       # 3. 采集岗位：官方接口(wenke) + 校招种子 + 渠道线索
-python3 core/cli.py search                # 出你的专属评分榜
+python3 core/cli.py ingest --file <你填好的岗位.json> --source manual   # 3. 导入岗位（模板要先填真实内容；占位符会被拒收）
+python3 core/cli.py search                # 4. 出你的专属评分榜
 
-# （可选）启用 MCP：本项目已带 .mcp.json，在该目录启动 Claude Code 会自动加载；
-# 全局使用可复制 skills/ 到 ~/.claude/skills/
+# 3b.（可选）自动采集官方接口——需要上游归档与采集底座，二选一都行：
+bash scripts/bootstrap_upstream.sh && bash adapters/sources/setup_env.sh
+python3 core/cli.py fetch --env all       # 28个官方接口源 + 校招种子 + 渠道线索
+
+# （可选）启用 MCP：复制 .mcp.json.example 为 .mcp.json 并按注释填好本机路径，
+# 在该目录启动 Claude Code 会自动加载；全局使用可复制 skills/ 到 ~/.claude/skills/
 ```
 
 ## 六个命令

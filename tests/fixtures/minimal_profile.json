@@ -1,0 +1,85 @@
+{
+  "identity": {
+    "name": "测试用户",
+    "cohort_label": "2027届应届生",
+    "phone": "13800000000",
+    "email": "test@example.com",
+    "grade": "2023级本科"
+  },
+  "education": [
+    {
+      "school": "某大学",
+      "major": "某专业",
+      "degree": "本科",
+      "start": "2023-09",
+      "end": "2027-06",
+      "gpa": "3.5/5.0",
+      "rank_percent": 20,
+      "core_courses": [
+        "课程A",
+        "课程B"
+      ],
+      "tests": []
+    }
+  ],
+  "skills": [
+    {
+      "name": "Python",
+      "level": "熟练",
+      "evidence": [
+        "ev_fixture"
+      ]
+    },
+    {
+      "name": "LLM/Agent 应用开发",
+      "level": "熟练",
+      "evidence": [
+        "ev_fixture"
+      ]
+    },
+    {
+      "name": "React / Vite 前端",
+      "level": "了解",
+      "evidence": [
+        "ev_fixture"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "id": "exp_1",
+      "type": "项目",
+      "name": "测试项目",
+      "role": "负责人",
+      "org": "某实验室",
+      "start": "2025-01",
+      "end": "2025-06",
+      "highlights": [
+        "完成了A功能"
+      ],
+      "tags": [
+        "多模态大模型"
+      ]
+    }
+  ],
+  "publications": [],
+  "awards": [],
+  "honors": [],
+  "portfolio": [],
+  "preferences": {
+    "target_roles": [
+      "测试岗"
+    ],
+    "target_cities": [
+      "上海"
+    ],
+    "salary_min_k": 10,
+    "company_types": [],
+    "avoid": [],
+    "notes": ""
+  },
+  "experience_ev_map": {},
+  "evidence_index": {
+    "ev_fixture": "tests/fixtures/minimal_profile.json（测试夹具，非真实材料）"
+  }
+}

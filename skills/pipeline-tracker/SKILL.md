@@ -16,7 +16,7 @@ python3 core/cli.py blacklist --add 某公司   # 手动拉黑（如用户明确
 ## 状态流转
 
 ```
-discovered → scored → applied → interviewing → offer
+new（已入库待评）→ 评分入榜 → applied（--send 记账）→ interviewing → offer（rejected 为过滤/落选留档）
                   ↘ rejected（记录原因，沉淀规律）
 ```
 

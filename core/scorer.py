@@ -241,8 +241,16 @@ def score_major_fit(job: dict, job_text: str, profile: dict) -> dict:
     if _hit(job_text, HARD_DOMAIN_WORDS):
         return {"score": 30, "reasons": ["硬件/芯片/机械等强限定领域，与主修专业跨度大；若含软件子方向请在详情页单独确认"]}
     if _hit(job_text, ["计算机", "软件工程", "人工智能", "电子信息", "通信工程", "自动化", "数学"]):
-        reasons = [f"计算机/泛IT类岗位，主修「{major}」非直接对口；但画像有 AI 项目与 EI 论文等跨学科硬证据"]
-        return {"score": 70, "reasons": reasons}
+        evidence_bits = []
+        if profile.get("publications"):
+            evidence_bits.append("论文")
+        if profile.get("awards"):
+            evidence_bits.append("竞赛奖项")
+        if profile.get("experiences"):
+            evidence_bits.append("项目经历")
+        cross = f"但画像有{'/'.join(evidence_bits)}等跨学科证据" if evidence_bits else "画像中暂无跨学科佐证，建议先补强相关经历（不可编造）"
+        return {"score": 70 if evidence_bits else 50,
+                "reasons": [f"计算机/泛IT类岗位，主修「{major}」非直接对口；{cross}"]}
     return {"score": 80, "reasons": ["未见明确专业限定，默认较开放"]}
 
 

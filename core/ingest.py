@@ -216,6 +216,12 @@ def ingest_jobs(raw_jobs: list[dict], source_platform: str = "manual") -> dict:
     for raw in raw_jobs:
         stats["received"] += 1
         job = normalize(raw, source_platform)
+        head = job.get("title", "") + job.get("company", "")
+        if any(marker in head for marker in ("（填写：", "（必填）")):
+            stats["rejected"] += 1
+            stats["details"].append({"id": job["id"], "title": job["title"], "company": job["company"],
+                                     "result": "拒绝：模板占位未填写"})
+            continue
         key = dedupe_key(job)
         if key in existing:
             old = existing[key]

@@ -16,7 +16,11 @@ CFG = store.load("config") if (store.ROOT / "data" / "config.json").exists() els
                "exclude_outsourcing": True, "exclude_experience_gte_years": 1}
 }
 
-PROFILE = store.load("profile")
+if (store.ROOT / "data" / "profile" / "profile.json").exists():
+    PROFILE = store.load("profile")
+else:
+    import json as _json
+    PROFILE = _json.loads((Path(__file__).parent / "fixtures" / "minimal_profile.json").read_text(encoding="utf-8"))
 
 
 def J(**kw):
@@ -100,7 +104,7 @@ def main() -> int:
         for f in failures:
             print(" -", f)
         return 1
-    print("ALL PASSED (17 filter/scoring checks)")
+    print("ALL TESTS PASSED (17 filter/scoring checks)")
     return 0
 
 
