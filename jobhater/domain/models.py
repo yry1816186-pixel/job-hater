@@ -269,3 +269,144 @@ class MatchOutcome(_Model):
     dims: dict[str, DimensionScore]
     evidence: dict = Field(default_factory=dict)  # matched/unmatched skills、命中证据
     needs_review: bool = False
+
+
+# ========== 投递生命周期 ==========
+
+
+class Application(_Model):
+    id: str
+    job_id: str
+    profile_id: str
+    resume_version_id: str | None = None
+    status: str = "discovered"
+    status_updated_at: str | None = None
+    applied_at: str | None = None
+    apply_channel: str | None = None
+    notes: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class ApplicationEvent(_Model):
+    id: int
+    application_id: str
+    kind: str
+    payload: dict = Field(default_factory=dict)
+    note: str | None = None
+    occurred_at: str | None = None
+
+
+class Interview(_Model):
+    id: str
+    application_id: str
+    round: int = 1
+    kind: str | None = None  # behavioral/technical/case/hr/group/final
+    scheduled_at: str | None = None
+    duration_min: int | None = None
+    location: str | None = None
+    interviewer_names: list[str] = Field(default_factory=list)
+    status: str = "planned"  # planned/done/cancelled
+    outcome: str | None = None  # pass/fail/pending
+    notes: str | None = None
+    created_at: str | None = None
+
+
+class InterviewSession(_Model):
+    id: str
+    interview_id: str | None = None
+    mode: str = "mock"  # mock/real_record
+    persona: str | None = None
+    difficulty: int | None = Field(default=None, ge=1, le=5)
+    started_at: str | None = None
+    ended_at: str | None = None
+    transcript: list[dict] = Field(default_factory=list)
+
+
+class InterviewReview(_Model):
+    id: str
+    session_id: str
+    overall: float | None = None
+    scores: dict = Field(default_factory=dict)
+    strengths: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    practice_items: list[str] = Field(default_factory=list)
+    ai_generated: bool = False
+    created_at: str | None = None
+
+
+class Offer(_Model):
+    id: str
+    application_id: str
+    employer_id: str | None = None
+    base_salary_k: float
+    salary_months: int | None = None
+    bonus_text: str | None = None
+    equity_text: str | None = None
+    benefits: list[str] = Field(default_factory=list)
+    city: str | None = None
+    work_mode: str | None = None
+    probation_months: int | None = None
+    deadline: str | None = None
+    status: str = "considering"  # considering/accepted/declined/expired
+    custom_dimensions: dict = Field(default_factory=dict)
+    notes: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class Reminder(_Model):
+    id: int
+    owner_kind: str  # application/interview/offer
+    owner_id: str
+    due_at: str
+    kind: str | None = None
+    title: str
+    done: bool = False
+    created_at: str | None = None
+
+
+# ========== 简历 ==========
+
+
+class Resume(_Model):
+    id: str
+    profile_id: str
+    name: str
+    kind: str = "master"  # master/job_specific
+    job_id: str | None = None
+    status: str = "draft"  # draft/final/archived
+    current_version: int = 0
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class BulletProvenance(_Model):
+    """一条 bullet 的溯源：改写类别 + 支撑证据。rewrite_kind 取值见 ResumeService。"""
+    path: str                     # sections 内的定位（如 work[0].bullets[2]）
+    text: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    rewrite_kind: str = "verbatim"  # verbatim/factual_rewrite/emphasis/reordering/keyword_alignment/unsupported
+
+
+class ResumeVersion(_Model):
+    id: str
+    resume_id: str
+    version: int
+    sections: dict = Field(default_factory=dict)  # JSON Resume 兼容结构
+    bullets_provenance: list[BulletProvenance] = Field(default_factory=list)
+    factcheck_report: dict | None = None
+    parent_version_id: str | None = None
+    note: str | None = None
+    created_at: str | None = None
+
+
+class CoverLetter(_Model):
+    id: str
+    profile_id: str
+    job_id: str | None = None
+    resume_version_id: str | None = None
+    content_md: str
+    factcheck_report: dict | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
