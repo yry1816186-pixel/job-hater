@@ -2,38 +2,70 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, rebuild]
   pull_request:
 
 jobs:
-  tests:
-    runs-on: ubuntu-latest
+  backend:
+    name: 后端（Python ${{ matrix.python }} @ ${{ matrix.os }}）
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.12", "3.14"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: 语法检查（全部 Python 文件）
-        run: |
-          find core mcp adapters -name '*.py' -print0 | xargs -0 -n1 python3 -m py_compile
-      - name: 测试套件（自运行脚本，全部输出 ALL TESTS PASSED 才算过）
-        run: |
-          set -e
-          for t in tests/test_*.py; do
-            echo "== $t =="
-            python3 "$t"
-          done
-      - name: MCP server 握手与工具清单
-        run: |
-          echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | python3 mcp/job_agent_mcp.py | grep -q protocolVersion
-          echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | python3 mcp/job_agent_mcp.py | grep -q fetch_sources
-      - name: 数据本地性静态检查（core 不得含网络调用）
-        run: |
-          ! grep -rnE "urllib|http\.client|requests|socket|httpx" core/
-      - name: 个人事实零字面量检查（core 不得硬编码用户相关人名/学校）
-        run: |
-          ! grep -rniE "yuanrongyue|nanhang|nuaa" core/
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: 安装（含测试依赖与 MCP 可选组）
+        run: pip install -e ".[dev,mcp]"
+      - name: Lint（ruff）
+        run: python -m ruff check jobhater tests
+      - name: 测试（pytest 全量）
+        run: python -m pytest tests/ -v
+
+  frontend:
+    name: 前端（Node ${{ matrix.node }}）
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20"]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: 类型检查
+        run: npx tsc -b
+      - name: 构建
+        run: npx vite build
+
+  migration-smoke:
+    name: 迁移烟测（干净库→全量迁移→幂等重跑）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: schema 迁移原子性/幂等 + v1 迁移往返
+        run: python -m pytest tests/test_db_and_textproc.py tests/test_sources_and_migration.py -v
+
+  docker:
+    name: Docker 镜像构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建镜像（多阶段：node 构建前端 → python 运行时）
+        run: docker build -t job-hater:ci .

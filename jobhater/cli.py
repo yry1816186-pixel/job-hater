@@ -29,6 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     p_migrate = sub.add_parser("migrate-v1", help="从 v1 JSON 数据目录一次性迁移")
     p_migrate.add_argument("old_data_dir", help="旧版 data/ 目录路径")
     p_migrate.add_argument("--db", default=None, help="目标 SQLite 文件（默认数据目录）")
+    sub.add_parser("backup", help="备份数据库到 exports/backups（WAL checkpoint 后复制）")
 
     args = parser.parse_args(argv)
     if args.data_dir:
@@ -54,6 +55,22 @@ def main(argv: list[str] | None = None) -> int:
         from jobhater.api import create_app
 
         uvicorn.run(create_app(), host=args.host, port=args.port, log_level="info")
+        return 0
+
+    if args.cmd == "backup":
+        import shutil
+
+        src = config.db_path()
+        dest_dir = config.exports_dir() / "backups"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / f"jobhater-{__import__('datetime').datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+        con = connect()
+        try:
+            con.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # 合并 WAL，得到自洽副本
+        finally:
+            con.close()
+        shutil.copy2(src, dest)
+        print(f"✅ 备份完成：{dest}")
         return 0
 
     if args.cmd == "migrate-v1":
