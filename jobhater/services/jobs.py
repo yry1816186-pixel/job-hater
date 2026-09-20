@@ -62,6 +62,7 @@ def _today() -> str:
 class JobService:
     def __init__(self, con: sqlite3.Connection) -> None:
         self.con = con
+        self._emp_cache: dict[str, str] | None = None
 
     # ---------- 信源 ----------
 
@@ -116,71 +117,103 @@ class JobService:
 
     # ---------- 雇主 ----------
 
+    def _employer_cache(self) -> dict[str, str]:
+        """规范化名/别名 → 雇主id 的进程内缓存（首次或失效后全量装载一次）。"""
+        if self._emp_cache is None:
+            cache: dict[str, str] = {}
+            for r in self.con.execute(
+                "SELECT id, canonical_name, aliases_json FROM employers"
+            ).fetchall():
+                cache[tp.norm_key(r["canonical_name"])] = r["id"]
+                for a in loads(r["aliases_json"], []):
+                    cache.setdefault(tp.norm_key(a), r["id"])
+            self._emp_cache = cache
+        return self._emp_cache
+
     def _resolve_employer(self, company: str) -> str:
         """按规范化名/别名找雇主，找不到则建档（type=unknown，不猜）。返回雇主 id。"""
         norm = tp.norm_key(company)
-        for r in self.con.execute(
-            "SELECT id, canonical_name, aliases_json FROM employers"
-        ).fetchall():
-            if tp.norm_key(r["canonical_name"]) == norm or norm in {
-                tp.norm_key(a) for a in loads(r["aliases_json"], [])
-            }:
-                return r["id"]
+        cache = self._employer_cache()
+        hit = cache.get(norm)
+        if hit:
+            return hit
         emp_id = new_id("emp")
-        with transaction(self.con):
-            self.con.execute(
-                "INSERT INTO employers(id, canonical_name, aliases_json) VALUES (?,?,?)",
-                (emp_id, company.strip(), "[]"),
-            )
+        # 在调用方（ingest 批量）事务内执行
+        self.con.execute(
+            "INSERT INTO employers(id, canonical_name, aliases_json) VALUES (?,?,?)",
+            (emp_id, company.strip(), "[]"),
+        )
+        cache[norm] = emp_id
         return emp_id
 
     # ---------- 导入主链 ----------
 
     def ingest(self, raw_jobs: list[dict], source_id: str = "manual") -> IngestStats:
-        """批量导入：规范化 → 分层去重 → 入库 + 快照。每条去向透明可查。"""
+        """批量导入：单事务批量写入（§29 ingestion batch 化）。
+
+        去重判定全部走预装载的内存索引（一次 SELECT 装载），避免逐行查询的 O(n²)。
+        每条去向透明可查；任一行写入异常 → 整批回滚并抛出（导入是原子操作）。
+        """
         self.ensure_source(source_id, "manual_paste", source_id)
         stats = IngestStats()
-        # 批内去重索引
-        seen_keys: set[str] = set()
         now = _now()
-        for raw in raw_jobs:
-            stats.received += 1
-            head = f"{raw.get('title', '')}{raw.get('company', '')}{raw.get('employer', '')}"
-            if any(marker in head for marker in _PLACEHOLDER_MARKERS):
-                stats.rejected += 1
-                stats.details.append(
-                    {"title": raw.get("title"), "company": raw.get("company"),
-                     "result": "拒绝：模板占位符未填写"}
+        # ---- 预装载去重索引（各一次全量 SELECT） ----
+        existing_by_key: dict[str, tuple[str, bool]] = {}
+        src_pairs: set[tuple[str, str]] = set()
+        content_first: dict[str, str] = {}
+        near_titles: dict[str, list[tuple[str, str]]] = {}
+        for r in self.con.execute(
+            "SELECT id, dedupe_key, source_id, source_job_id, content_hash, "
+            "title, employer_name, description FROM job_postings"
+        ).fetchall():
+            existing_by_key.setdefault(r["dedupe_key"], (r["id"], bool((r["description"] or "").strip())))
+            if r["source_job_id"]:
+                src_pairs.add((r["source_id"], r["source_job_id"]))
+            content_first.setdefault(r["content_hash"], r["id"])
+            near_titles.setdefault(tp.norm_key(r["employer_name"]), []).append((r["id"], r["title"]))
+
+        seen_keys: set[str] = set()
+        with transaction(self.con):
+            for raw in raw_jobs:
+                stats.received += 1
+                head = f"{raw.get('title', '')}{raw.get('company', '')}{raw.get('employer', '')}"
+                if any(marker in head for marker in _PLACEHOLDER_MARKERS):
+                    stats.rejected += 1
+                    stats.details.append(
+                        {"title": raw.get("title"), "company": raw.get("company"),
+                         "result": "拒绝：模板占位符未填写"}
+                    )
+                    continue
+                job = self.normalize(raw, source_id, fetched_at=now)
+                if job is None:
+                    stats.rejected += 1
+                    stats.details.append(
+                        {"title": raw.get("title"), "company": raw.get("company"),
+                         "result": "拒绝：缺少标题或公司名（清洗失败）"}
+                    )
+                    continue
+                key = job.dedupe_key
+                if key in seen_keys:
+                    stats.deduped_exact += 1
+                    stats.details.append(
+                        {"title": job.title, "company": job.employer_name, "result": "批内精确去重"}
+                    )
+                    continue
+                seen_keys.add(key)
+                outcome = self._store(
+                    job, raw, now, existing_by_key, src_pairs, content_first, near_titles
                 )
-                continue
-            job = self.normalize(raw, source_id, fetched_at=now)
-            if job is None:
-                stats.rejected += 1
                 stats.details.append(
-                    {"title": raw.get("title"), "company": raw.get("company"),
-                     "result": "拒绝：缺少标题或公司名（清洗失败）"}
+                    {"id": job.id, "title": job.title, "company": job.employer_name, "result": outcome}
                 )
-                continue
-            key = job.dedupe_key
-            if key in seen_keys:
-                stats.deduped_exact += 1
-                stats.details.append(
-                    {"title": job.title, "company": job.employer_name, "result": "批内精确去重"}
-                )
-                continue
-            seen_keys.add(key)
-            outcome = self._store(job, raw, now)
-            stats.details.append(
-                {"id": job.id, "title": job.title, "company": job.employer_name, "result": outcome}
-            )
-            if outcome == "入库" or outcome.startswith("入库"):
-                stats.added += 1
-            elif "补全" in outcome:
-                stats.enriched += 1
-            elif outcome.startswith("近似去重"):
-                stats.deduped_near += 1
-            elif outcome.startswith("去重"):
-                stats.deduped_exact += 1
+                if outcome.startswith("入库"):
+                    stats.added += 1
+                elif "补全" in outcome:
+                    stats.enriched += 1
+                elif outcome.startswith("近似去重"):
+                    stats.deduped_near += 1
+                elif outcome.startswith("去重"):
+                    stats.deduped_exact += 1
         return stats
 
     def normalize(
@@ -270,10 +303,20 @@ class JobService:
 
     # ---------- 存储与去重 ----------
 
-    def _store(self, job: JobPosting, raw: dict, now: str) -> str:
-        """返回去向描述。所有路径都保证 source_snapshots 有原始条目快照。"""
+    def _store(
+        self,
+        job: JobPosting,
+        raw: dict,
+        now: str,
+        existing_by_key: dict[str, tuple[str, bool]],
+        src_pairs: set[tuple[str, str]],
+        content_first: dict[str, str],
+        near_titles: dict[str, list[tuple[str, str]]],
+    ) -> str:
+        """返回去向描述。在 ingest 的批量事务内执行——所有写操作不再各自开事务。
+        去重索引（调用方预装载）随写入原地更新，保证批内后续行可见。"""
         # L1: 同源同 ID
-        if job.source_job_id:
+        if job.source_job_id and (job.source_id, job.source_job_id) in src_pairs:
             row = self.con.execute(
                 "SELECT id, description FROM job_postings WHERE source_id=? AND source_job_id=?",
                 (job.source_id, job.source_job_id),
@@ -285,25 +328,28 @@ class JobService:
                     return "去重并补全JD（同源同ID）"
                 return "去重跳过（同源同ID）"
         # L2: 跨源 dedupe_key
-        row = self.con.execute(
-            "SELECT id, description FROM job_postings WHERE dedupe_key=?", (job.dedupe_key,)
-        ).fetchone()
-        if row:
-            self._snapshot(row["id"], job, raw, now)
-            if not (row["description"] or "").strip() and job.description:
-                self._enrich(row["id"], job, now)
+        hit = existing_by_key.get(job.dedupe_key)
+        if hit:
+            job_id, has_desc = hit
+            self._snapshot(job_id, job, raw, now)
+            if not has_desc and job.description:
+                self._enrich(job_id, job, now)
+                existing_by_key[job.dedupe_key] = (job_id, True)
                 return "去重并补全JD（跨源同岗）"
             return "去重跳过（跨源同岗）"
-        # L3: 近似去重（同雇主 + 标题相似）
-        near = self._find_near_dup(job)
+        # L3: 近似去重（同雇主 + 标题相似，内存索引）
+        emp_norm = tp.norm_key(job.employer_name)
+        near = None
+        for other_id, other_title in near_titles.get(emp_norm, []):
+            if tp.title_similarity(job.title, other_title) >= NEAR_DUP_TITLE_THRESHOLD:
+                near = other_id
+                break
         if near:
             job.extras = {**job.extras, "near_dup_of": near}
         # L4: 内容指纹
-        same_content = self.con.execute(
-            "SELECT id FROM job_postings WHERE content_hash=? LIMIT 1", (job.content_hash,)
-        ).fetchone()
+        same_content = content_first.get(job.content_hash)
         if same_content and not job.extras.get("near_dup_of"):
-            job.extras = {**job.extras, "canonical_of": same_content["id"]}
+            job.extras = {**job.extras, "canonical_of": same_content}
         # 过期事实检测（数据事实，非用户偏好）
         if _is_expired(job):
             job.status = JobStatus.EXPIRED
@@ -334,12 +380,17 @@ class JobService:
             json.dumps(job.extras, ensure_ascii=False), job.employer_name,
         )
         assert len(cols) == len(vals), f"列/值不匹配: {len(cols)} vs {len(vals)}"
-        with transaction(self.con):
-            self.con.execute(
-                f"INSERT INTO job_postings ({','.join(cols)}) "
-                f"VALUES ({','.join('?' * len(cols))})",
-                vals,
-            )
+        self.con.execute(
+            f"INSERT INTO job_postings ({','.join(cols)}) "
+            f"VALUES ({','.join('?' * len(cols))})",
+            vals,
+        )
+        # 索引原地更新（批内后续行可见）
+        existing_by_key[job.dedupe_key] = (job.id, bool((job.description or "").strip()))
+        if job.source_job_id:
+            src_pairs.add((job.source_id, job.source_job_id))
+        content_first.setdefault(job.content_hash, job.id)
+        near_titles.setdefault(emp_norm, []).append((job.id, job.title))
         self._snapshot(job.id, job, raw, now)
         if job.extras.get("near_dup_of"):
             return f"近似去重标记入库（near_dup_of={job.extras['near_dup_of']}）"
@@ -350,37 +401,26 @@ class JobService:
         return "入库"
 
     def _snapshot(self, job_id: str, job: JobPosting, raw: dict, now: str) -> None:
+        """在调用方事务内写入原始快照（不在本方法内开事务）。"""
         raw_json = json.dumps(raw, ensure_ascii=False, default=str)
-        with transaction(self.con):
-            self.con.execute(
-                """INSERT INTO source_snapshots(job_id, source_id, source_job_id, url, raw_hash, raw_json, fetched_at)
-                   VALUES (?,?,?,?,?,?,?)""",
-                (
-                    job_id, job.source_id, job.source_job_id, job.canonical_url,
-                    tp.sha1_hex(raw_json), raw_json, now,
-                ),
-            )
+        self.con.execute(
+            """INSERT INTO source_snapshots(job_id, source_id, source_job_id, url, raw_hash, raw_json, fetched_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (
+                job_id, job.source_id, job.source_job_id, job.canonical_url,
+                tp.sha1_hex(raw_json), raw_json, now,
+            ),
+        )
 
     def _enrich(self, job_id: str, job: JobPosting, now: str) -> None:
-        with transaction(self.con):
-            self.con.execute(
-                "UPDATE job_postings SET description=?, search_text=?, last_seen_at=? WHERE id=?",
-                (
-                    job.description,
-                    tp.tokenize_for_fts(f"{job.title} {job.employer_name} {job.description or ''}"),
-                    now, job_id,
-                ),
-            )
-
-    def _find_near_dup(self, job: JobPosting) -> str | None:
-        rows = self.con.execute(
-            "SELECT id, title FROM job_postings WHERE dedupe_key LIKE ?",
-            (tp.norm_key(job.employer_name) + "|%",),
-        ).fetchall()
-        for r in rows:
-            if tp.title_similarity(job.title, r["title"]) >= NEAR_DUP_TITLE_THRESHOLD:
-                return r["id"]
-        return None
+        self.con.execute(
+            "UPDATE job_postings SET description=?, search_text=?, last_seen_at=? WHERE id=?",
+            (
+                job.description,
+                tp.tokenize_for_fts(f"{job.title} {job.employer_name} {job.description or ''}"),
+                now, job_id,
+            ),
+        )
 
     # ---------- 查询 ----------
 
