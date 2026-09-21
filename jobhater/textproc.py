@@ -70,14 +70,24 @@ def fts_query(terms: list[str]) -> str:
     词间 AND、词内子片段 OR：同一查询词经分词产生的多个 token（如「机械设计」
     → 机械设计/机械/设计，随分词器而异）之间是同义展开而非并列条件——
     文档命中任一子片段即算命中该词，由 BM25 决定强弱。
+
+    token 内的半角双引号按 FTS5 语法成对转义（"→""），防止拼接出
+    unterminated string；纯标点 token（转义后仅引号）直接丢弃。
     """
+    def _quote(t: str) -> str | None:
+        escaped = t.replace('"', '""')
+        stripped = escaped.replace('"', "")
+        if not stripped:
+            return None
+        return f'"{escaped}"'
+
     groups: list[str] = []
     for term in terms:
-        toks = [t for t in tokenize_for_fts(term).split() if t]
+        toks = [_quote(t) for t in dict.fromkeys(tokenize_for_fts(term).split()) if t]
+        toks = [q for q in toks if q]
         if not toks:
             continue
-        quoted = [f'"{t}"' for t in dict.fromkeys(toks)]  # 去重保序
-        groups.append(f"({' OR '.join(quoted)})")
+        groups.append(f"({' OR '.join(toks)})")
     return " AND ".join(groups)
 
 

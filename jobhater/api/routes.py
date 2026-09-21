@@ -167,8 +167,8 @@ class InterviewIn(BaseModel):
 
 class OfferIn(BaseModel):
     application_id: str
-    base_salary_k: float
-    salary_months: int | None = None
+    base_salary_k: float = Field(ge=0)
+    salary_months: int | None = Field(default=None, ge=0, le=36)
     city: str | None = None
     work_mode: str | None = None
     deadline: str | None = None
@@ -429,7 +429,10 @@ def register_routes(app: FastAPI) -> None:
         """§7 通用入口：粘贴任意 JD 文本 → 结构化草稿（默认不落库，用户确认后保存）。"""
         from jobhater.services.sources import parse_jd_text
 
-        draft = parse_jd_text(body.text, url=body.url)
+        try:
+            draft = parse_jd_text(body.text, url=body.url)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
         saved = None
         if body.save:
             if not draft.get("title") or not draft.get("company"):
@@ -605,6 +608,11 @@ def register_routes(app: FastAPI) -> None:
     def transition(app_id: str, body: TransitionIn, con=Depends(get_con)):
         try:
             return ApplicationService(con).transition(app_id, body.status, note=body.note)
+        except LifecycleError as e:
+            raise _err(e) from e  # 状态机语义错误：422 并保留完整信息
+        except ValueError as e:
+            # 非法状态串（ApplicationStatus 枚举外）：422 且不回显内部异常文本
+            raise HTTPException(422, f"非法投递状态：{body.status}") from e
         except Exception as e:
             raise _err(e) from e
 
