@@ -1,7 +1,16 @@
 """领域枚举。存库为字符串值；新增值只增不删（旧数据永远可读）。"""
 from __future__ import annotations
 
-from enum import StrEnum
+import sys
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:  # Python 3.10：enum.StrEnum 是 3.11+ 才有；此 shim 覆盖本项目用到的行为子集
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        def __str__(self) -> str:
+            return self.value
 
 
 class ExperienceKind(StrEnum):
