@@ -55,6 +55,10 @@ _GENERIC_TERMS = {
     "相关", "以上", "岗位职责", "任职要求", "加分",
 }
 
+# 批次/招聘流程词（信源 keywords 常混入「2027届校园招聘、正式」一类标签）：
+# 不是技能，进入缺口分析只会产生假阳性
+_BATCH_TERM_RE = re.compile(r"(届|校招|招聘|社招|秋招|春招|实习|正式|急招|热招|内推|直招)")
+
 INTEGRITY_NOTE = (
     "诚信规则：以下为学习路径建议。对应能力真实掌握、产出真实完成后，才可写入简历"
     "或向面试官主张——本工具不会把未掌握的技能写进任何材料。"
@@ -111,12 +115,15 @@ def _jd_hits(text: str, terms: list[str]) -> bool:
 
 
 def _jd_terms(job: JobPosting) -> list[str]:
-    """机器可读的 JD 技能要求信号：keywords 结构化字段（去通用词、去重、保序）。"""
+    """机器可读的 JD 技能要求信号：keywords 结构化字段（去通用词/批次词、去重、保序）。"""
     seen: set[str] = set()
     out: list[str] = []
     for k in job.keywords:
         t = k.strip()
-        if len(t) >= 2 and t not in seen and t not in _GENERIC_TERMS:
+        if (
+            len(t) >= 2 and t not in seen and t not in _GENERIC_TERMS
+            and not _BATCH_TERM_RE.search(t) and not t.isdigit()
+        ):
             seen.add(t)
             out.append(t)
     return out
@@ -376,18 +383,28 @@ class MaterialsService:
             )
         job = ctx.job
         evidence_map = {ev.id: ev.original_text for ev in self._ps.list_evidence(profile_id)}
+        profile = self._ps.get_profile(profile_id)
 
         lines: list[str] = [
             f"# 求职信：{job.title}（{job.employer_name}）", "", "您好：", "",
             "**为什么是我**", "",
         ]
-        for e in ctx.experiences[:3]:
+        # 论据按 JD 相关度重排（与打招呼话术同策略）：最贴岗位的经历先说
+        for e, _score in [
+            (e, s) for e, s in _reorder(ctx.claims, ctx.jd_text)
+            if e.kind == "experience"
+        ][:3]:
             anchors = "".join(f" [ev:{i}]" for i in e.evidence_ids)
-            lines.append(f"- {e.meta['employer']}｜{e.meta['title']}：{_clip(e.detail, 80)}{anchors}")
-        for p in ctx.projects[:2]:
+            excerpt = _first_clause(e.detail, 90)
+            lines.append(f"- {e.meta['employer']}｜{e.meta['title']}：{excerpt}{anchors}")
+        for p, _score in [
+            (p, s) for p, s in _reorder(ctx.claims, ctx.jd_text)
+            if p.kind == "project"
+        ][:2]:
             anchors = "".join(f" [ev:{i}]" for i in p.evidence_ids)
             role = f"（{p.meta['role']}）" if p.meta.get("role") else ""
-            lines.append(f"- 项目「{p.name}」{role}：{_clip(p.detail, 80)}{anchors}")
+            excerpt = _first_clause(p.detail, 90)
+            lines.append(f"- 项目「{p.name}」{role}：{excerpt}{anchors}")
         jd_hit_skills = [s for s in ctx.skills if _jd_hits(ctx.jd_text, s.match_terms)][:4]
         if jd_hit_skills:
             lines.append(f"- 技能：{'、'.join(s.name for s in jd_hit_skills)}（均见于岗位 JD）")
@@ -411,9 +428,13 @@ class MaterialsService:
             else:
                 lines.append("（该岗位暂无可摘录的 JD 正文——建议投递前进一步了解岗位方向，本信不作臆测。）")
 
+        signature = " ｜ ".join(
+            x for x in (ctx.display_name, profile.email, profile.phone) if x
+        )
         lines += [
             "", "**期待**", "",
             "如方向合适，期待有机会当面介绍上述经历的细节；也欢迎先沟通团队更具体的需求。感谢您的时间。",
+            "", signature,
         ]
         content_md = "\n".join(lines) + "\n"
 

@@ -25,7 +25,8 @@ def main(argv: list[str] | None = None) -> int:
     p_match = sub.add_parser("match", help="对画像运行匹配排序")
     p_match.add_argument("--profile", required=True)
     p_match.add_argument("--preset")
-    p_match.add_argument("--limit", type=int, default=100)
+    p_match.add_argument("--limit", type=int, default=0,
+                         help="最多评估岗位数；0=全部在库岗位（默认）")
     p_migrate = sub.add_parser("migrate-v1", help="从 v1 JSON 数据目录一次性迁移")
     p_migrate.add_argument("old_data_dir", help="旧版 data/ 目录路径")
     p_migrate.add_argument("--db", default=None, help="目标 SQLite 文件（默认数据目录）")
@@ -161,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
             if preset is None:
                 print("❌ 该画像没有求职偏好（preset），先在 Web UI 或 API 创建", file=sys.stderr)
                 return 2
-            jobs = JobService(con).search("", statuses=["active"], limit=args.limit)
+            jobs = JobService(con).search("", statuses=["active"], limit=args.limit or 10**9)
             outcomes = MatchService(con).rank_jobs(ps.match_view(args.profile), preset, jobs)
             js = JobService(con)
             print(f"偏好「{preset.name}」评估 {len(outcomes)} 岗，合格 "
@@ -169,7 +170,8 @@ def main(argv: list[str] | None = None) -> int:
             for o in outcomes[:20]:
                 job = js.get(o.job_id)
                 mark = "✅" if o.eligible else "⛔"
-                print(f"  {mark} {o.rank_score or 0:5.1f} [{o.verdict}] "
+                rel = f" rel={o.relevance_score:g}" if o.relevance_score is not None else ""
+                print(f"  {mark} {o.rank_score or 0:5.1f}{rel} [{o.verdict}] "
                       f"{job.title} @ {job.employer_name}（{job.city or '城市未知'}）")
             return 0
 

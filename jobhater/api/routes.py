@@ -4,11 +4,14 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from jobhater.db import connect
 from jobhater.services.ai import EGRESS_DISCLOSURES, AIService
+from jobhater.services.backup import BackupService
+from jobhater.services.contacts import ContactsService
+from jobhater.services.interview_kit import InterviewKitService
 from jobhater.services.jobs import JobService
 from jobhater.services.lifecycle import (
     ApplicationService,
@@ -17,6 +20,9 @@ from jobhater.services.lifecycle import (
 )
 from jobhater.services.matching import MatchService
 from jobhater.services.profile import ProfileService
+from jobhater.services.reminders import RemindersService
+from jobhater.services.settings import SettingsService
+from jobhater.services.stats import StatsService
 
 
 def get_con():
@@ -268,6 +274,65 @@ class ProfileIdIn(BaseModel):
     profile_id: str
 
 
+class ContactIn(BaseModel):
+    name: str
+    application_id: str | None = None
+    employer_id: str | None = None
+    role: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    wechat: str | None = None
+    note: str | None = None
+
+
+class ContactPatchIn(BaseModel):
+    name: str | None = None
+    role: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    wechat: str | None = None
+    note: str | None = None
+
+
+class ReminderIn(BaseModel):
+    owner_kind: str  # application / interview / offer
+    owner_id: str
+    due_at: str  # YYYY-MM-DD 或完整 ISO
+    title: str
+    kind: str | None = None
+
+
+class ReminderDoneIn(BaseModel):
+    done: bool
+
+
+class SettingIn(BaseModel):
+    value: Any  # 任意 JSON；各键的形状契约见 SettingsService.KNOWN_KEYS
+
+
+class InterviewSessionIn(BaseModel):
+    interview_id: str
+    mode: str = "mock"
+    persona: str | None = None
+    difficulty: int | None = Field(default=None, ge=1, le=5)
+
+
+class TurnIn(BaseModel):
+    role: str  # interviewer / candidate
+    content: str
+
+
+class SelfReviewIn(BaseModel):
+    scores: dict[str, float]
+    strengths: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    practice_items: list[str] = Field(default_factory=list)
+
+
+class AIReviewIn(BaseModel):
+    ack_egress: bool = False
+
+
 def _err(e: Exception) -> HTTPException:
     if isinstance(e, (KeyError, LifecycleError)):
         return HTTPException(status_code=404 if isinstance(e, KeyError) else 422, detail=str(e).strip("'\""))
@@ -468,9 +533,14 @@ def register_routes(app: FastAPI) -> None:
     def search_jobs(
         q: str = "", city: str | None = None, recruitment_type: str | None = None,
         status: str | None = None, near_dup_only: bool = False,
+        sort: str = "recent", profile_id: str | None = None,
         limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0),
         con=Depends(get_con),
     ):
+        if sort not in ("recent", "match"):
+            raise HTTPException(422, "sort 仅支持 recent | match")
+        if sort == "match" and not profile_id:
+            raise HTTPException(422, "按匹配排序需带 profile_id")
         svc = JobService(con)
         jobs = svc.search(
             q,
@@ -480,8 +550,9 @@ def register_routes(app: FastAPI) -> None:
             near_dup_only=near_dup_only,
             limit=limit,
             offset=offset,
+            ranked_profile_id=profile_id if sort == "match" else None,
         )
-        return {
+        out = {
             "total": svc.count_filtered(
                 q,
                 cities=[city] if city else None,
@@ -491,6 +562,20 @@ def register_routes(app: FastAPI) -> None:
             ),
             "items": [j.model_dump() for j in jobs],
         }
+        if sort == "match" and profile_id:
+            # 用已存的最近一次匹配结果展示分数（engine 版本一致），不在此重复计算——
+            # 匹配是显式动作（总览「重新匹配排序」/ /api/match/run），翻页只读结果
+            ms = MatchService(con)
+            out["match_by_id"] = {
+                j.id: m.model_dump()
+                for j in jobs
+                if (m := ms.latest_for_job(j.id, profile_id)) is not None
+            }
+            out["match_stale_hint"] = (
+                "部分岗位还没有匹配结果（先在总览页运行匹配）——无结果的岗位按入库时间排在后面。"
+                if len(out["match_by_id"]) < len(jobs) else ""
+            )
+        return out
 
     @app.get("/api/jobs/{job_id}")
     def get_job(job_id: str, profile_id: str | None = None, con=Depends(get_con)):
@@ -546,9 +631,14 @@ def register_routes(app: FastAPI) -> None:
     @app.post("/api/jobs/{job_id}/materials/cover-letter")
     def materials_cover_letter(job_id: str, body: ProfileIdIn, con=Depends(get_con)):
         from jobhater.services.materials import MaterialsError, MaterialsService
+        from jobhater.services.resume import strip_citations
 
         try:
-            return MaterialsService(con).build_cover_letter(body.profile_id, job_id).model_dump()
+            letter = MaterialsService(con).build_cover_letter(body.profile_id, job_id)
+            # content_md 保留 [ev:*] 锚点（审计/自检用）；content_display 为可直接投递的人面版本
+            out = letter.model_dump()
+            out["content_display"] = strip_citations(out["content_md"])
+            return out
         except MaterialsError as e:
             raise HTTPException(422, str(e)) from e
         except KeyError as e:
@@ -903,4 +993,216 @@ def register_routes(app: FastAPI) -> None:
         except KeyError as e:
             raise _err(e) from e
         except Exception as e:
+            raise _err(e) from e
+
+    # ================= 联系人（轻量 CRM） =================
+
+    @app.get("/api/contacts")
+    def list_contacts(
+        application_id: str | None = None, employer_id: str | None = None,
+        q: str | None = None, con=Depends(get_con),
+    ):
+        return ContactsService(con).list(
+            application_id=application_id, employer_id=employer_id, q=q
+        )
+
+    @app.post("/api/contacts")
+    def add_contact(body: ContactIn, con=Depends(get_con)):
+        try:
+            return ContactsService(con).add(
+                body.name, application_id=body.application_id, employer_id=body.employer_id,
+                role=body.role, phone=body.phone, email=body.email,
+                wechat=body.wechat, note=body.note,
+            )
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.get("/api/contacts/{contact_id}")
+    def get_contact(contact_id: int, con=Depends(get_con)):
+        c = ContactsService(con).get(contact_id)
+        if c is None:
+            raise HTTPException(404, f"联系人不存在: {contact_id}")
+        return c
+
+    @app.patch("/api/contacts/{contact_id}")
+    def patch_contact(contact_id: int, body: ContactPatchIn, con=Depends(get_con)):
+        try:
+            return ContactsService(con).update(
+                contact_id, name=body.name, role=body.role, phone=body.phone,
+                email=body.email, wechat=body.wechat, note=body.note,
+            )
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.delete("/api/contacts/{contact_id}")
+    def delete_contact(contact_id: int, con=Depends(get_con)):
+        try:
+            ContactsService(con).delete(contact_id)
+            return {"ok": True}
+        except ValueError as e:
+            raise _err(e) from e
+
+    # ================= 提醒与跟进建议 =================
+
+    @app.get("/api/reminders")
+    def list_reminders(
+        include_done: bool = False, done: bool = False,
+        owner_kind: str | None = None, owner_id: str | None = None,
+        con=Depends(get_con),
+    ):
+        return RemindersService(con).list(
+            done=done, include_done=include_done, owner_kind=owner_kind, owner_id=owner_id
+        )
+
+    @app.get("/api/reminders/suggestions")
+    def reminder_suggestions(profile_id: str | None = None, con=Depends(get_con)):
+        """确定性规则推导的跟进建议（不落库，采纳后 POST 成为真实提醒）。"""
+        return RemindersService(con).suggestions(profile_id=profile_id)
+
+    @app.post("/api/reminders")
+    def add_reminder(body: ReminderIn, con=Depends(get_con)):
+        try:
+            return RemindersService(con).create(
+                body.owner_kind, body.owner_id, body.due_at, body.title, kind=body.kind
+            )
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.patch("/api/reminders/{reminder_id}")
+    def patch_reminder(reminder_id: int, body: ReminderDoneIn, con=Depends(get_con)):
+        try:
+            return RemindersService(con).set_done(reminder_id, body.done)
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.delete("/api/reminders/{reminder_id}")
+    def delete_reminder(reminder_id: int, con=Depends(get_con)):
+        try:
+            RemindersService(con).delete(reminder_id)
+            return {"ok": True}
+        except ValueError as e:
+            raise _err(e) from e
+
+    # ================= 用户设置（本地偏好 KV） =================
+
+    @app.get("/api/settings")
+    def list_settings(con=Depends(get_con)):
+        return SettingsService(con).list()
+
+    @app.get("/api/settings/{key}")
+    def get_setting(key: str, con=Depends(get_con)):
+        return {"key": key, "value": SettingsService(con).get(key)}
+
+    @app.put("/api/settings/{key}")
+    def put_setting(key: str, body: SettingIn, con=Depends(get_con)):
+        SettingsService(con).set(key, body.value)
+        return {"key": key, "value": body.value}
+
+    @app.delete("/api/settings/{key}")
+    def delete_setting(key: str, con=Depends(get_con)):
+        return {"deleted": SettingsService(con).delete(key)}
+
+    # ================= 模拟面试练习器 =================
+
+    @app.get("/api/applications/{app_id}/interview-sessions")
+    def list_iv_sessions(app_id: str, con=Depends(get_con)):
+        return [s.model_dump() for s in InterviewKitService(con).list_sessions(app_id)]
+
+    @app.post("/api/interview-sessions")
+    def create_iv_session(body: InterviewSessionIn, con=Depends(get_con)):
+        try:
+            return InterviewKitService(con).create_session(
+                body.interview_id, mode=body.mode, persona=body.persona,
+                difficulty=body.difficulty,
+            ).model_dump()
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.get("/api/interview-sessions/{session_id}")
+    def get_iv_session(session_id: str, con=Depends(get_con)):
+        try:
+            return InterviewKitService(con).get_session(session_id).model_dump()
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.post("/api/interview-sessions/{session_id}/turns")
+    def add_iv_turn(session_id: str, body: TurnIn, con=Depends(get_con)):
+        try:
+            return InterviewKitService(con).add_turn(
+                session_id, body.role, body.content
+            ).model_dump()
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.post("/api/interview-sessions/{session_id}/end")
+    def end_iv_session(session_id: str, con=Depends(get_con)):
+        try:
+            return InterviewKitService(con).end_session(session_id).model_dump()
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.get("/api/interview-sessions/{session_id}/stats")
+    def iv_session_stats(session_id: str, con=Depends(get_con)):
+        try:
+            return InterviewKitService(con).stats(session_id)
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.get("/api/interview-sessions/{session_id}/reviews")
+    def list_iv_reviews(session_id: str, con=Depends(get_con)):
+        return [r.model_dump() for r in InterviewKitService(con).list_reviews(session_id)]
+
+    @app.post("/api/interview-sessions/{session_id}/reviews/self")
+    def iv_review_self(session_id: str, body: SelfReviewIn, con=Depends(get_con)):
+        try:
+            return InterviewKitService(con).review_self(
+                session_id, scores=body.scores, strengths=body.strengths,
+                gaps=body.gaps, practice_items=body.practice_items,
+            ).model_dump()
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.post("/api/interview-sessions/{session_id}/reviews/ai")
+    def iv_review_ai(session_id: str, body: AIReviewIn, con=Depends(get_con)):
+        """AI 面试复盘（远程 opt-in，428 语义同 /api/ai/complete）。"""
+        from jobhater.services.ai import EgressNotAcknowledged
+
+        try:
+            return InterviewKitService(con).review_ai(session_id, ack_egress=body.ack_egress)
+        except EgressNotAcknowledged as e:
+            raise HTTPException(428, detail={"disclosure": str(e), "task": "interview_review"}) from e
+        except ValueError as e:
+            raise _err(e) from e
+
+    # ================= 统计与洞察 =================
+
+    @app.get("/api/stats/overview")
+    def stats_overview(profile_id: str | None = None, con=Depends(get_con)):
+        return StatsService(con).overview(profile_id)
+
+    @app.get("/api/stats/salary")
+    def stats_salary(city: str | None = None, con=Depends(get_con)):
+        return StatsService(con).salary_insights(city=city)
+
+    # ================= 全量备份与恢复 =================
+
+    @app.get("/api/backup/download")
+    def backup_download(con=Depends(get_con)):
+        from jobhater.config import db_path
+
+        data, filename = BackupService(con, db_path()).snapshot()
+        return Response(
+            content=data,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.post("/api/backup/restore")
+    async def backup_restore(file: UploadFile, con=Depends(get_con)):
+        from jobhater.config import db_path
+
+        data = await file.read()
+        try:
+            return BackupService(con, db_path()).restore(data)
+        except ValueError as e:
             raise _err(e) from e

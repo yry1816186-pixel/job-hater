@@ -474,16 +474,38 @@ class JobService:
         near_dup_only: bool = False,
         limit: int = 50,
         offset: int = 0,
+        ranked_profile_id: str | None = None,
     ) -> list[JobPosting]:
-        """检索：FTS（中文预分词）+ 结构化过滤。query 为空时按时间倒序列举。"""
+        """检索：FTS（中文预分词）+ 结构化过滤。query 为空时按时间倒序列举。
+
+        ranked_profile_id 非空时改按该画像最近一次匹配结果排序：
+        合格优先 → rank_score → 检索相关性 → 入库时间。岗位未参与匹配
+        （无匹配记录）排最后，不隐藏——排序是呈现顺序，不是过滤。"""
         join_fts, where, args = self._search_conditions(
             query, cities, recruitment_types, statuses, near_dup_only
         )
+        join_match = ""
+        order = " ORDER BY p.last_seen_at DESC"
+        if ranked_profile_id:
+            # 每岗取该画像最近一次匹配（match_results 追加写，MAX(id) 即最新）
+            join_match = (
+                " LEFT JOIN match_results m ON m.job_id = p.id AND m.profile_id = ?"
+                " AND m.id = (SELECT MAX(m2.id) FROM match_results m2"
+                "             WHERE m2.job_id = p.id AND m2.profile_id = ?)"
+            )
+            args = [ranked_profile_id, ranked_profile_id, *args]
+            order = (
+                " ORDER BY COALESCE(m.eligible, 0) DESC, COALESCE(m.rank_score, 0) DESC,"
+                " COALESCE(m.relevance_score, 0) DESC, p.last_seen_at DESC"
+            )
+        elif join_fts:
+            order = " ORDER BY rank"
         sql = (
             "SELECT p.* FROM job_postings p"
             + (" JOIN job_postings_fts ON job_postings_fts.rowid = p.rowid" if join_fts else "")
+            + join_match
             + (" WHERE " + " AND ".join(where) if where else "")
-            + (" ORDER BY rank" if join_fts else " ORDER BY p.last_seen_at DESC")
+            + order
             + " LIMIT ? OFFSET ?"
         )
         rows = self.con.execute(sql, (*args, limit, offset)).fetchall()

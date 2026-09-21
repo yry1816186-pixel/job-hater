@@ -104,21 +104,23 @@ def jobs_import(raw_jobs_json: str, source_id: str = "mcp") -> str:
 
 
 @mcp.tool()
-def match_run(profile_id: str, limit: int = 50) -> str:
-    """对画像运行匹配排序（写 match_results 历史；结果含 gate 原因与维度依据）。"""
+def match_run(profile_id: str, limit: int = 0) -> str:
+    """对画像运行匹配排序（写 match_results 历史；limit=0 评估全部在库岗位——默认。
+    返回前 30 条，含 gate 原因、匹配分、结论档与检索相关性）。"""
     con = _con()
     try:
         ps = ProfileService(con)
         preset = ps.active_preset(profile_id)
         if preset is None:
             return json.dumps({"error": "画像没有求职偏好(preset)"}, ensure_ascii=False)
-        jobs = JobService(con).search("", statuses=["active"], limit=limit)
+        jobs = JobService(con).search("", statuses=["active"], limit=limit or 10**9)
         outcomes = MatchService(con).rank_jobs(ps.match_view(profile_id), preset, jobs)
         return json.dumps(
             [
                 {
                     "job_id": o.job_id, "eligible": o.eligible,
                     "rank_score": o.rank_score, "verdict": o.verdict,
+                    "relevance": o.relevance_score,
                     "failed_gates": [g.detail for g in o.gate_reasons if not g.passed],
                 }
                 for o in outcomes[:30]

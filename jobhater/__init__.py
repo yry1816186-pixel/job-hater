@@ -8,6 +8,13 @@
 - Local-first：业务数据默认只存本机；启用远程 AI 时明确披露数据出境范围。
 """
 
-__version__ = "2.2.0"
+# 版本唯一真相源是 pyproject.toml（经安装元数据读取）；源码直跑（未安装）时用兜底值。
+try:
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _pkg_version
+
+    __version__ = _pkg_version("jobhater")
+except PackageNotFoundError:  # pragma: no cover - 仅未安装场景
+    __version__ = "2.3.0"
 
 APP_NAME = "job-hater"

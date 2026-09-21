@@ -1,5 +1,5 @@
 {
-  "engine_version": "2.2.1",
+  "engine_version": "2.3.0",
   "notes": "匹配引擎黄金评测集：每个用例 = persona画像 + preset偏好 + 岗位原文 + 期望。修改引擎语义（升 ENGINE_VERSION）时必须同步重标注本文件——这是匹配质量的不可证伪基准。期望字段全部是子集断言（contains/exact/范围），不锁死无关维度。",
   "personas": {
     "backend_go": {

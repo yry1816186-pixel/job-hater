@@ -299,6 +299,18 @@ class ApplicationEvent(_Model):
     occurred_at: str | None = None
 
 
+class Contact(_Model):
+    id: int
+    application_id: str | None = None  # 挂到投递（优先）或雇主，均可为空
+    employer_id: str | None = None
+    name: str
+    role: str | None = None  # HR/面试官/内推人/导师…
+    phone: str | None = None
+    email: str | None = None
+    wechat: str | None = None
+    note: str | None = None
+
+
 class Interview(_Model):
     id: str
     application_id: str

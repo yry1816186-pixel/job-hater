@@ -22,7 +22,7 @@ from jobhater.db.connection import transaction
 from jobhater.domain.models import DimensionScore, GateOutcome, JobPosting, MatchOutcome
 from jobhater.services.profile import degree_rank
 
-ENGINE_VERSION = "2.2.1"  # 2.2.1: 修复批量相关性 BM25 恒空（词组间 AND→OR）；维度/gate 语义不变
+ENGINE_VERSION = "2.3.0"  # 2.2.1 修复批量相关性 BM25 恒空；2.3.0 相关性融合进 skill_match（0.6/0.4 校准）
 
 # 维度默认权重与结论阈值——"数据层默认"而非代码铁律：用户在 preset.weights 可全量覆盖。
 DEFAULT_WEIGHTS: dict[str, float] = {
@@ -177,6 +177,10 @@ def eligibility_gates(
             add("city", True, f"{city} 在目标城市 {preset.target_cities} 内")
         elif remote and preset.remote_ok:
             add("city", True, "岗位支持远程，符合远程偏好")
+        elif not city and gates_cfg.get("accept_unknown_city"):
+            # 与「数据不足不是候选人的错」原则对齐（同 accept_incomplete_salary）：
+            # 信源没给城市 ≠ 岗位不在目标城市。放行但如实标注，详情页人工确认。
+            add("city", True, "城市未知（偏好已开启放行未知城市）——建议人工核实工作地点")
         else:
             add("city", False, f"{city or '城市未知'} 不在目标城市 {preset.target_cities} 内")
 
@@ -356,8 +360,21 @@ def dimension_scores(
                 reasons=[f"核心技能命中 {len(matched)}/{len(core)}：{matched[:8]}"],
             )
         if relevance is not None:
-            note = f"检索相关性(BM25归一) {relevance:.0f}/100"
-            dims["skill_match"].reasons.append(note)
+            # 相关性融合（2.3.0 校准）：词法命中是精确但稀疏的信号（JD 标题往往
+            # 不写全技能栈），BM25 是稠密但含噪的信号（标题+正文词面重叠）。
+            # 0.6/0.4 让两者互相牵制：BM25 高但词法 0 → 不超过 40+30×0.6；
+            # 词法命中但 BM25 低（词面巧合）→ 被拉回。避免任何单一信号独大。
+            lexical = dims["skill_match"].score
+            blended = round(0.6 * lexical + 0.4 * relevance)
+            dims["skill_match"] = DimensionScore(
+                score=blended,
+                reasons=[
+                    *dims["skill_match"].reasons,
+                    f"检索相关性(BM25归一) {relevance:.0f}/100",
+                    f"校准：词法{lexical}×0.6 + 相关性{relevance:.0f}×0.4 = {blended}",
+                ],
+                uncertainty=dims["skill_match"].uncertainty,
+            )
         if hard_domain_cap:
             old = dims["skill_match"].score
             dims["skill_match"] = DimensionScore(
@@ -642,7 +659,14 @@ class MatchService:
             for job in jobs
         ]
         self.persist_many(outcomes)
-        outcomes.sort(key=lambda o: (not o.eligible, -(o.rank_score or 0)))
+        # 合格优先 → rank 降序 → 检索相关性降序（rank 打平时的决胜信号）→ 稳定保序
+        outcomes.sort(
+            key=lambda o: (
+                not o.eligible,
+                -(o.rank_score or 0),
+                -(o.relevance_score or 0),
+            )
+        )
         return outcomes
 
     def latest_for_job(self, job_id: str, profile_id: str) -> MatchOutcome | None:
