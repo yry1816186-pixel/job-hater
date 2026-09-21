@@ -97,6 +97,12 @@ job-hater fetch --companies mihoyo        # 官网信源抓取（米哈游/百�
 ## 数据与备份
 
 - 数据目录：`~/.jobhater/`（SQLite WAL + 导出文件）。备份 = 复制该目录；卸载 = 删除该目录。
+- **简历互操作**：导出 JSON Resume 开放标准（简历页 `json-resume` 格式，或
+  `GET /api/resume-versions/{id}/json-resume`）；也可从其他工具导出的 JSON Resume
+  导入画像（`POST /api/profiles/{id}/import/json-resume`）——导入与手工建档同级，
+  同样要经证据确认与事实校验。
+- **日历导出**：投递看板右上「📅 导出日历」→ iCalendar 文件（投递截止+面试排期，
+  含提前提醒），可导入系统日历 / Google Calendar。
 - 从 v1 迁移：`job-hater migrate-v1 <旧data目录>`（画像/证据/偏好/岗位全量迁移，v1 的"投递即拉黑公司"等旧语义不迁移并如实报告）。
 
 ## 技术架构

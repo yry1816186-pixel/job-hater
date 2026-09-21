@@ -499,6 +499,18 @@ def register_routes(app: FastAPI) -> None:
     def list_sources(con=Depends(get_con)):
         return [s.model_dump() for s in JobService(con).list_sources()]
 
+    @app.get("/api/calendar/ics")
+    def calendar_ics(profile_id: str, con=Depends(get_con)):
+        """投递截止+面试排期 → iCalendar（RFC 5545，导入系统/Google 日历）。"""
+        from fastapi.responses import Response
+
+        ics = ApplicationService(con).calendar_ics(profile_id)
+        return Response(
+            content=ics,
+            media_type="text/calendar; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="jobhater.ics"'},
+        )
+
     # ---------- 确定性材料生成（本地零 AI 依赖：v1 能力回归） ----------
 
     @app.post("/api/jobs/{job_id}/materials/resume")
@@ -745,20 +757,48 @@ def register_routes(app: FastAPI) -> None:
 
     @app.get("/api/resume-versions/{version_id}/export")
     def export_version(version_id: str, fmt: str = "md", con=Depends(get_con)):
-        if fmt not in ("md", "json", "html", "pdf", "docx"):
-            raise HTTPException(422, "fmt ∈ md/json/html/pdf/docx")
+        if fmt not in ("md", "json", "json-resume", "html", "pdf", "docx"):
+            raise HTTPException(422, "fmt ∈ md/json/json-resume/html/pdf/docx")
         try:
             path = ResumeService(con).export_file(version_id, fmt)
         except ResumeError as e:
             raise HTTPException(422, str(e)) from e
         from fastapi.responses import FileResponse, PlainTextResponse
 
-        if fmt in ("md", "html", "json"):
+        if fmt in ("md", "html", "json", "json-resume"):
             return PlainTextResponse(
                 path.read_text(encoding="utf-8"),
                 media_type="text/plain; charset=utf-8",
             )
         return FileResponse(path, filename=path.name)
+
+    @app.get("/api/resume-versions/{version_id}/json-resume")
+    def get_json_resume(version_id: str, con=Depends(get_con)):
+        """JSON Resume 开放标准视图（结构化 JSON 响应，非文件下载）。"""
+        try:
+            return ResumeService(con).export_json_resume(version_id)
+        except ResumeError as e:
+            raise HTTPException(422, str(e)) from e
+
+    @app.post("/api/profiles/{profile_id}/import/json-resume")
+    def import_json_resume(profile_id: str, body: dict, con=Depends(get_con)):
+        """从 JSON Resume 标准文件导入画像簇（技能/经历/教育/项目）。
+        导入与手工建档同级——同样要经证据确认与 factcheck，无免检特权。
+        body 即标准 resume JSON（或 {"resume": {...}} 包裹）。"""
+        from jobhater.services.resume import ResumeError
+
+        data = body.get("resume") if isinstance(body.get("resume"), dict) else body
+        if not isinstance(data, dict) or not (
+            data.get("basics") or data.get("work") or data.get("skills")
+            or data.get("education") or data.get("projects")
+        ):
+            raise HTTPException(422, "不是可识别的 JSON Resume 文档（缺 basics/work/skills/education/projects）")
+        try:
+            return ResumeService(con).import_json_resume(profile_id, data)
+        except ResumeError as e:
+            raise HTTPException(422, str(e)) from e
+        except KeyError as e:
+            raise _err(e) from e
 
     @app.get("/api/resume-versions/{version_id}/diff")
     def diff_versions(version_id: str, against: str, con=Depends(get_con)):

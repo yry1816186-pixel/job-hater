@@ -193,6 +193,110 @@ class ApplicationService:
             if cur.rowcount == 0:
                 raise LifecycleError(f"面试不存在: {interview_id}")
 
+    # ---------- 日历导出（RFC 5545 iCalendar） ----------
+
+    @staticmethod
+    def _ics_escape(text: str) -> str:
+        return (
+            str(text)
+            .replace("\\", "\\\\")
+            .replace(";", "\\;")
+            .replace(",", "\\,")
+            .replace("\r\n", " ")
+            .replace("\n", " ")
+        )
+
+    @staticmethod
+    def _ics_stamp(iso: str | None) -> str | None:
+        """ISO 时间戳 → iCalendar UTC 形式 YYYYMMDDTHHMMSSZ；无法解析返回 None。"""
+        if not iso:
+            return None
+        digits = "".join(ch for ch in str(iso)[:19] if ch.isdigit())
+        if len(digits) < 8:
+            return None
+        return digits.ljust(14, "0")[:14] + "Z"
+
+    def calendar_ics(self, profile_id: str) -> str:
+        """投递截止 + 面试排期 → iCalendar（导入系统日历/Google Calendar）。
+
+        只导出未来事件：过期截止与已完成面试不产生噪音。
+        """
+        import datetime as _dt
+
+        def _future_date(v: str | None) -> _dt.date | None:
+            if not v:
+                return None
+            try:
+                d = _dt.date.fromisoformat(str(v)[:10])
+            except ValueError:
+                return None
+            return d if d >= _dt.date.today() else None
+
+        now_stamp = self._ics_stamp(_dt.datetime.now(_dt.timezone.utc).isoformat()) or ""
+        lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//job-hater//local job search//CN",
+            "CALSCALE:GREGORIAN",
+        ]
+        # ① 投递截止（跟踪中的岗位 deadline）
+        for row in self.con.execute(
+            """SELECT a.id AS aid, j.title AS title, j.employer_name AS employer, j.deadline
+                 FROM applications a JOIN job_postings j ON j.id = a.job_id
+                 WHERE a.profile_id=? AND j.deadline IS NOT NULL
+                   AND a.status NOT IN ('withdrawn','rejected','closed')""",
+            (profile_id,),
+        ).fetchall():
+            d = _future_date(row["deadline"])
+            if not d:
+                continue
+            summary = self._ics_escape(f"⏳ 投递截止：{row['title']} @ {row['employer']}")
+            lines += [
+                "BEGIN:VEVENT",
+                f"UID:deadline-{row['aid']}@jobhater.local",
+                f"DTSTAMP:{now_stamp}",
+                f"DTSTART;VALUE=DATE:{d.strftime('%Y%m%d')}",
+                f"SUMMARY:{summary}",
+                "DESCRIPTION:来自 Job Hater 的投递截止提醒",
+                "BEGIN:VALARM",
+                "TRIGGER:-P1D",
+                "ACTION:DISPLAY",
+                "DESCRIPTION:明天截止，确认是否已投递",
+                "END:VALARM",
+                "END:VEVENT",
+            ]
+        # ② 面试排期（planned 且有 scheduled_at）
+        for row in self.con.execute(
+            """SELECT i.id AS iid, i.round, i.kind, i.scheduled_at,
+                      j.title AS title, j.employer_name AS employer
+                 FROM interviews i
+                 JOIN applications a ON a.id = i.application_id
+                 JOIN job_postings j ON j.id = a.job_id
+                 WHERE a.profile_id=? AND i.status='planned' AND i.scheduled_at IS NOT NULL""",
+            (profile_id,),
+        ).fetchall():
+            start = self._ics_stamp(row["scheduled_at"])
+            if not start:
+                continue
+            kind = row["kind"] or "面试"
+            summary = self._ics_escape(f"🎤 第{row['round']}轮{kind}：{row['title']} @ {row['employer']}")
+            lines += [
+                "BEGIN:VEVENT",
+                f"UID:interview-{row['iid']}@jobhater.local",
+                f"DTSTAMP:{now_stamp}",
+                f"DTSTART:{start}",
+                f"SUMMARY:{summary}",
+                f"DESCRIPTION:Job Hater 面试排期：第{row['round']}轮",
+                "BEGIN:VALARM",
+                "TRIGGER:-PT30M",
+                "ACTION:DISPLAY",
+                "DESCRIPTION:面试半小时前",
+                "END:VALARM",
+                "END:VEVENT",
+            ]
+        lines.append("END:VCALENDAR")
+        return "\r\n".join(lines) + "\r\n"
+
     # ---------- Offer ----------
 
     def add_offer(

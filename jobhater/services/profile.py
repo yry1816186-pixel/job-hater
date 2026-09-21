@@ -72,6 +72,15 @@ class ProfileService:
         ).fetchone()
         return row_to_model(CandidateProfile, row, {}) if row else None
 
+    def update_profile_headline(self, profile_id: str, headline: str) -> None:
+        """只更新一句话介绍（导入材料补全用）；姓名是画像身份，不在此改动。"""
+        with transaction(self.con):
+            cur = self.con.execute(
+                "UPDATE candidate_profiles SET headline=? WHERE id=?", (headline, profile_id)
+            )
+            if cur.rowcount == 0:
+                raise KeyError(f"画像不存在: {profile_id}")
+
     def list_profiles(self) -> list[CandidateProfile]:
         rows = self.con.execute(
             "SELECT * FROM candidate_profiles ORDER BY created_at"

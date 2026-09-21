@@ -1,0 +1,213 @@
+{
+  "engine_version": "2.1.0",
+  "notes": "匹配引擎黄金评测集：每个用例 = persona画像 + preset偏好 + 岗位原文 + 期望。修改引擎语义（升 ENGINE_VERSION）时必须同步重标注本文件——这是匹配质量的不可证伪基准。期望字段全部是子集断言（contains/exact/范围），不锁死无关维度。",
+  "personas": {
+    "backend_go": {
+      "display_name": "小高",
+      "headline": "3年Go后端",
+      "skills": [
+        {"name": "Go", "level": 4, "years": 3, "aliases": []},
+        {"name": "MySQL", "level": 3, "years": 3, "aliases": []}
+      ],
+      "experiences": [
+        {"employer": "某云科技", "title": "后端开发工程师", "tags": ["go", "后端", "高并发", "微服务"], "description": "Go 微服务与高并发网关开发"}
+      ],
+      "educations": [{"school": "华中科技大学", "degree": "本科", "major": "软件工程"}]
+    },
+    "backend_python": {
+      "display_name": "小派",
+      "headline": "Python后端转AI方向",
+      "skills": [
+        {"name": "Python", "level": 4, "years": 4, "aliases": ["py3"]},
+        {"name": "Django", "level": 3, "years": 2, "aliases": []}
+      ],
+      "experiences": [
+        {"employer": "某电商", "title": "Python开发工程师", "tags": ["python", "后端", "django"], "description": "Django 业务系统开发"}
+      ],
+      "educations": [{"school": "四川大学", "degree": "本科", "major": "计算机"}]
+    },
+    "chip_master": {
+      "display_name": "芯片哥",
+      "headline": "数字IC设计硕士",
+      "skills": [
+        {"name": "数字IC设计", "level": 4, "years": 2, "aliases": ["verilog"]},
+        {"name": "FPGA", "level": 3, "years": 2, "aliases": []}
+      ],
+      "experiences": [
+        {"employer": "某半导体", "title": "IC设计工程师", "tags": ["集成电路", "芯片", "verilog"], "description": "数字后端设计与验证"}
+      ],
+      "educations": [{"school": "电子科技大学", "degree": "硕士", "major": "微电子"}]
+    },
+    "empty_fresh": {
+      "display_name": "小白",
+      "headline": "应届探索中",
+      "skills": [],
+      "experiences": [],
+      "educations": []
+    },
+    "designer": {
+      "display_name": "小设",
+      "headline": "产品设计",
+      "skills": [
+        {"name": "Figma", "level": 4, "years": 2, "aliases": []},
+        {"name": "交互设计", "level": 3, "years": 2, "aliases": []}
+      ],
+      "experiences": [
+        {"employer": "某互联网", "title": "产品设计师", "tags": ["设计", "用户研究"], "description": "B端产品交互设计"}
+      ],
+      "educations": [{"school": "江南大学", "degree": "本科", "major": "工业设计"}]
+    }
+  },
+  "preset_defaults": {
+    "name": "黄金集偏好",
+    "target_roles": ["后端开发"],
+    "target_cities": ["上海", "杭州"],
+    "salary_min_k": 18,
+    "employment_types": [],
+    "accept_incomplete_salary": true
+  },
+  "cases": [
+    {
+      "id": "gate-city-reject",
+      "persona": "backend_go",
+      "preset": {},
+      "job": {"title": "Go开发工程师", "company": "京西信息", "city": "北京", "salary": "25-40K", "description": "Go 微服务开发"},
+      "expect": {"eligible": false, "failed_gates_contains": ["city"]}
+    },
+    {
+      "id": "gate-city-pass",
+      "persona": "backend_go",
+      "preset": {},
+      "job": {"title": "Go开发工程师", "company": "沪上科技", "city": "上海", "salary": "25-40K·16薪", "description": "Go 微服务高并发开发 golang"},
+      "expect": {"eligible": true, "passed_gates_contains": ["city"], "rank_min": 65, "matched_contains": ["Go"]}
+    },
+    {
+      "id": "gate-salary-floor-reject",
+      "persona": "backend_go",
+      "preset": {},
+      "job": {"title": "后端开发", "company": "低薪公司", "city": "杭州", "salary": "9-12K", "description": "Go 后端开发"},
+      "expect": {"eligible": false, "failed_gates_contains": ["salary_floor"]}
+    },
+    {
+      "id": "gate-salary-unknown-pass",
+      "persona": "backend_go",
+      "preset": {},
+      "job": {"title": "后端开发", "company": "面议公司", "city": "上海", "description": "Go 后端开发 薪资面议"},
+      "expect": {"eligible": true, "passed_gates_contains": ["salary_floor"], "dim_uncertainty": {"salary_fit": "薪资数据缺失"}}
+    },
+    {
+      "id": "gate-batch-mismatch",
+      "persona": "backend_go",
+      "preset": {"employment_types": ["campus"]},
+      "job": {"title": "资深后端工程师（社招）", "company": "社招公司", "city": "上海", "salary": "30-50K", "description": "社会招聘 资深 Go 工程师 5年经验"},
+      "expect": {"eligible": false, "failed_gates_contains": ["recruitment_type"]}
+    },
+    {
+      "id": "gate-batch-unknown-pass-uncertain",
+      "persona": "backend_go",
+      "preset": {"employment_types": ["campus"]},
+      "job": {"title": "后端开发", "company": "未知批次", "city": "上海", "salary": "20-35K", "description": "Go 后端开发"},
+      "expect": {"eligible": true, "passed_gates_contains": ["recruitment_type"]}
+    },
+    {
+      "id": "gate-experience-over-max",
+      "persona": "backend_go",
+      "preset": {"max_experience_years_required": 2},
+      "job": {"title": "高级后端", "company": "高要求", "city": "上海", "salary": "40-60K", "description": "要求5年以上 Go 开发经验"},
+      "expect": {"eligible": false, "failed_gates_contains": ["experience_over_max"]}
+    },
+    {
+      "id": "gate-education-gap",
+      "persona": "backend_go",
+      "job": {"title": "算法工程师", "company": "研究院", "city": "上海", "salary": "30-50K", "education": "硕士", "description": "机器学习算法研究"},
+      "expect": {"eligible": false, "failed_gates_contains": ["education"]}
+    },
+    {
+      "id": "gate-graduation-year-mismatch",
+      "persona": "backend_go",
+      "preset": {"employment_types": ["campus"], "graduation_year": 2027},
+      "job": {"title": "后端开发（2026届校招）", "company": "校招公司", "city": "上海", "salary": "20-30K", "description": "2026届校园招聘 Go 后端"},
+      "expect": {"eligible": false, "failed_gates_contains": ["graduation_year"]}
+    },
+    {
+      "id": "gate-exclude-keyword",
+      "persona": "backend_go",
+      "preset": {"exclude_keywords": ["外派"]},
+      "job": {"title": "后端开发", "company": "外包公司", "city": "上海", "salary": "20-35K", "description": "Go 后端开发，需外派客户现场"},
+      "expect": {"eligible": false, "failed_gates_contains": ["excluded_keyword"]}
+    },
+    {
+      "id": "gate-expired",
+      "persona": "backend_go",
+      "job": {"title": "后端开发", "company": "过期公司", "city": "上海", "salary": "20-35K", "description": "Go 后端开发", "deadline": "2020-01-01"},
+      "expect": {"eligible": false, "failed_gates_contains": ["expired"]}
+    },
+    {
+      "id": "synonym-builtin-golang",
+      "persona": "backend_go",
+      "job": {"title": "Golang 开发工程师", "company": "拼写自由公司", "city": "杭州", "salary": "25-40K", "description": "golang 微服务开发，不写 Go 字样"},
+      "expect": {"eligible": true, "matched_contains": ["Go"]}
+    },
+    {
+      "id": "synonym-user-alias-python",
+      "persona": "backend_python",
+      "job": {"title": "Python3 后端", "company": "别名公司", "city": "上海", "salary": "22-35K", "description": "py3 Django 业务系统"},
+      "expect": {"eligible": true, "matched_contains": ["Python"]}
+    },
+    {
+      "id": "hard-domain-cap-ic-backend",
+      "persona": "backend_go",
+      "job": {"title": "IC后端设计工程师", "company": "芯和半导体", "city": "上海", "salary": "25-45K", "description": "芯片后端设计，集成电路物理实现，FPGA原型验证，半导体工艺协同"},
+      "expect": {"eligible": true, "dim_max": {"skill_match": 50, "experience_relevance": 50}, "evidence_has": ["hard_domain_flag"]}
+    },
+    {
+      "id": "hard-domain-no-cap-insider",
+      "persona": "chip_master",
+      "job": {"title": "数字IC设计工程师", "company": "芯原股份", "city": "上海", "salary": "30-50K", "description": "芯片设计，集成电路，Verilog，FPGA验证，半导体工艺"},
+      "expect": {"eligible": true, "matched_contains": ["数字IC设计", "FPGA"], "evidence_absent": ["hard_domain_flag"]}
+    },
+    {
+      "id": "salary-inversion-flag-not-gate",
+      "persona": "backend_go",
+      "preset": {"salary_min_k": 10},
+      "job": {"title": "初级后端", "company": "低线公司", "city": "上海", "salary": "9-12K", "description": "Go 后端开发"},
+      "expect": {"eligible": true, "evidence_has": ["salary_inversion"], "reasons_contains": {"salary_fit": "倒挂"}}
+    },
+    {
+      "id": "verdict-strong-recommend",
+      "persona": "backend_go",
+      "job": {"title": "Go后端开发工程师", "company": "完美匹配", "city": "杭州", "salary": "30-50K·16薪", "description": "Go 微服务高并发 MySQL 后端开发，职责与要求全部对口"},
+      "expect": {"eligible": true, "verdict": "强烈推荐", "rank_min": 80}
+    },
+    {
+      "id": "verdict-hold-unrelated",
+      "persona": "designer",
+      "job": {"title": "Java资深架构师", "company": "无关公司", "city": "北京", "salary": "60-90K", "description": "Java 架构设计 JVM 调优 分布式"},
+      "expect": {"eligible": false, "failed_gates_contains": ["city"]}
+    },
+    {
+      "id": "skill-zero-hit-floor30",
+      "persona": "backend_python",
+      "job": {"title": "嵌入式固件工程师", "company": "固件公司", "city": "上海", "salary": "25-35K", "description": "C语言固件开发 单片机 RTOS"},
+      "expect": {"eligible": true, "dim_exact": {"skill_match": 30}, "unmatched_contains": ["Python"]}
+    },
+    {
+      "id": "neutral-empty-persona",
+      "persona": "empty_fresh",
+      "job": {"title": "任意岗位", "company": "任意公司", "city": "上海", "salary": "20-30K", "description": "岗位职责任意"},
+      "expect": {"eligible": true, "dim_exact": {"skill_match": 50}, "dim_uncertainty": {"skill_match": "画像技能缺失"}}
+    },
+    {
+      "id": "recency-stale-job",
+      "persona": "backend_go",
+      "job": {"title": "Go后端", "company": "旧帖公司", "city": "上海", "salary": "25-40K", "description": "Go 后端开发", "published_at": "2026-06-01"},
+      "expect": {"dim_max": {"recency": 25}}
+    },
+    {
+      "id": "keyword-stuffing-cross-check",
+      "persona": "backend_python",
+      "job": {"title": "医疗器械注册专员", "company": "医械公司", "city": "上海", "salary": "12-18K", "description": "医疗器械注册申报，临床试验资料，制药法规合规，Python脚本辅助，测试报告审核，化工工艺"},
+      "expect": {"eligible": true, "any_of": {"evidence_has": ["hard_domain_flag"], "dim_uncertainty": {"skill_match": "词法"}}}
+    }
+  ]
+}

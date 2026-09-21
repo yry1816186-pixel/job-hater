@@ -474,14 +474,16 @@ def dimension_scores(
             evidence["salary_inversion"] = inversion_flag
 
     # --- recency ---
+    # 黄金集 recency-stale-job 抓出的存量bug：原实现用 ref[:10].isdigit() 做日期守卫，
+    # 但 ISO 日期含连字符恒为 False → 一切带日期岗位都被判「发布时间未知」。
+    # 修复：直接尝试 fromisoformat 解析（合法日期才计天数）。
     ref = job.published_at or job.last_seen_at
-    if ref and ref[:10].isdigit() and len(ref) >= 10:
+    days = None
+    if ref:
         try:
             days = (dt.date.today() - dt.date.fromisoformat(ref[:10])).days
         except ValueError:
             days = None
-    else:
-        days = None
     if days is None:
         dims["recency"] = DimensionScore(score=50, reasons=["发布时间未知"], uncertainty="时效数据缺失")
     elif days <= 7:

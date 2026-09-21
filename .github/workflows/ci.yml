@@ -62,6 +62,35 @@ jobs:
       - name: schema 迁移原子性/幂等 + v1 迁移往返
         run: python -m pytest tests/test_db_and_textproc.py tests/test_sources_and_migration.py -v
 
+  perf-canary:
+    name: 性能金丝雀（benchmark 宽松阈值，防 10x 级回退）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      # 共享 runner 噪声大：阈值放宽到只拦量级级回退（本地精确跑法见 docs/PERFORMANCE.md）
+      - name: benchmark 2000 岗（ingest≥40/s、检索P95<150ms）
+        run: python scripts/benchmark.py --jobs 2000 --seed 7 --min-ingest-rate 40 --max-search-p95-ms 150
+
+  quality-gate:
+    name: 匹配质量门禁（黄金评测集）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      # 22 个标注用例：gate 全覆盖+同义组/硬域封顶/薪资倒挂/四档结论/交叉校验。
+      # 引擎语义变更必须同步重标注 tests/golden/matching_golden.json（文件锁 engine_version）
+      - name: 黄金集（engine_version 锁定）
+        run: python -m pytest tests/test_matching_golden.py -v
+
   docker:
     name: Docker 镜像构建
     runs-on: ubuntu-latest

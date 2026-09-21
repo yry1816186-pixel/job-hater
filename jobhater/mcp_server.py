@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import json
 
-from mcp.server.fastmcp import FastMCP
+# mcp 1.x 的 FastMCP 在 2.x 更名为 MCPServer（.tool/.run/instructions API 面兼容，
+# 见官方迁移指南 https://py.sdk.modelcontextprotocol.io/v2/migration）。
+# 双路 import 使本包同时支持 1.x 与 2.x 运行时。
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:  # mcp >= 2
+    from mcp.server.mcpserver import MCPServer as FastMCP
 
 from jobhater.db import apply_all, connect
 from jobhater.services.jobs import JobService

@@ -409,8 +409,157 @@ class ResumeService:
             name=_esc(b.get("name", "")), label=_esc(b.get("label", "")), body=body
         )
 
+    # ---------- JSON Resume 开放标准互操作（https://jsonresume.org/schema） ----------
+
+    def export_json_resume(self, version_id: str) -> dict:
+        """内部 sections → JSON Resume 标准。证据引用（evidence_ids）按下划线
+        扩展属性保留——标准允许自定义属性，溯源是本系统的核心主张，不丢弃。"""
+        v = self.get_version(version_id)
+        s = v["sections"]
+        basics = s.get("basics") or {}
+        out: dict = {
+            "$schema": "https://raw.githubusercontent.com/jsonresume/resume-schema/v1.0.0/schema.json",
+            "basics": {
+                "name": basics.get("name", ""),
+                "label": basics.get("label", ""),
+                "summary": basics.get("summary", ""),
+            },
+            "work": [
+                {
+                    "name": w.get("name", ""),
+                    "position": w.get("position", ""),
+                    "startDate": w.get("startDate", "") or "",
+                    "endDate": w.get("endDate", "") or "",
+                    "summary": w.get("summary", "") or "",
+                    "highlights": list(w.get("highlights") or []),
+                    "_evidence_ids": list(w.get("evidence_ids") or []),
+                }
+                for w in s.get("work") or []
+            ],
+            # 教育：官方键 institution/area/studyType；内部叫 school/major/degree
+            "education": [
+                {
+                    "institution": e.get("school", ""),
+                    "area": e.get("major", "") or "",
+                    "studyType": e.get("degree", "") or "",
+                    "startDate": e.get("startDate", "") or "",
+                    "endDate": e.get("endDate", "") or "",
+                    "score": e.get("score", "") or "",
+                }
+                for e in s.get("education") or []
+            ],
+            "projects": [
+                {
+                    "name": p.get("name", ""),
+                    "role": p.get("role", "") or "",
+                    "url": p.get("url", "") or "",
+                    "description": p.get("description", "") or "",
+                    "startDate": p.get("startDate", "") or "",
+                    "endDate": p.get("endDate", "") or "",
+                    "_evidence_ids": list(p.get("evidence_ids") or []),
+                }
+                for p in s.get("projects") or []
+            ],
+            "skills": [
+                {"name": k.get("name", ""), "level": str(k.get("level", "")),
+                 "keywords": list(k.get("keywords") or [])}
+                for k in s.get("skills") or []
+            ],
+            "awards": [
+                {"title": a.get("title", ""), "date": a.get("date", "") or "",
+                 "_evidence_ids": list(a.get("evidence_ids") or [])}
+                for a in s.get("awards") or []
+            ],
+            "_meta": {
+                "generator": "job-hater",
+                "resume_id": v["resume_id"],
+                "version_id": v["id"],
+                "version": v["version"],
+            },
+        }
+        return out
+
+    def import_json_resume(self, profile_id: str, data: dict) -> dict:
+        """JSON Resume 标准 → 画像簇（技能/经历/教育/项目）。只取可核实的事实字段；
+        同名实体跳过（重复导入幂等）；返回各簇导入计数。
+
+        信任边界：导入的是「用户自己提供的材料」，与手工建档同级——同样要经
+        证据确认与 factcheck 才能进入定稿简历，导入不产生任何免检特权。
+        """
+        from jobhater.services.profile import ProfileService
+
+        ps = ProfileService(self.con)
+        if ps.get_profile(profile_id) is None:
+            raise ResumeError(f"画像不存在: {profile_id}")
+        counts = {"skills": 0, "experiences": 0, "educations": 0, "projects": 0, "headline_filled": 0}
+
+        def _d(v: str | None) -> str | None:
+            s = str(v or "").strip()
+            return s or None
+
+        existing_skills = {s.name for s in ps.list_skills(profile_id)}
+        for sk in data.get("skills") or []:
+            name = _d(sk.get("name"))
+            if not name or name in existing_skills:
+                continue
+            ps.add_skill(
+                profile_id, name=name,
+                aliases=[str(k) for k in (sk.get("keywords") or []) if str(k).strip() and str(k) != name],
+            )
+            existing_skills.add(name)
+            counts["skills"] += 1
+
+        existing_exp = {(e.employer, e.title) for e in ps.list_experiences(profile_id)}
+        for w in data.get("work") or []:
+            employer, title = _d(w.get("name")), _d(w.get("position"))
+            if not employer or not title or (employer, title) in existing_exp:
+                continue
+            ps.add_experience(
+                profile_id, employer=employer, title=title,
+                start_date=_d(w.get("startDate")), end_date=_d(w.get("endDate")),
+                description=_d(w.get("summary")) or None,
+                is_current=str(w.get("endDate") or "").strip() in ("", "至今", "Present", "present"),
+            )
+            existing_exp.add((employer, title))
+            counts["experiences"] += 1
+
+        existing_edu = {e.school for e in ps.list_educations(profile_id)}
+        for e in data.get("education") or []:
+            school = _d(e.get("institution") or e.get("school"))
+            if not school or school in existing_edu:
+                continue
+            ps.add_education(
+                profile_id, school=school,
+                degree=_d(e.get("studyType") or e.get("degree")),
+                major=_d(e.get("area") or e.get("major")),
+                start_date=_d(e.get("startDate")), end_date=_d(e.get("endDate")),
+            )
+            existing_edu.add(school)
+            counts["educations"] += 1
+
+        existing_prj = {p.name for p in ps.list_projects(profile_id)}
+        for p in data.get("projects") or []:
+            name = _d(p.get("name"))
+            if not name or name in existing_prj:
+                continue
+            ps.add_project(
+                profile_id, name=name, role=_d(p.get("role")),
+                url=_d(p.get("url")), description=_d(p.get("description")) or None,
+            )
+            existing_prj.add(name)
+            counts["projects"] += 1
+
+        basics = data.get("basics") or {}
+        profile = ps.get_profile(profile_id)
+        if not profile.headline:
+            label = _d(basics.get("label")) or _d(basics.get("summary"))
+            if label:
+                ps.update_profile_headline(profile_id, label[:120])
+                counts["headline_filled"] = 1
+        return counts
+
     def export_file(self, version_id: str, fmt: str) -> Path:
-        """导出到 exports 目录。fmt: md/json/html/pdf/docx。可选依赖缺失时如实报错。"""
+        """导出到 exports 目录。fmt: md/json/html/pdf/docx/json-resume。可选依赖缺失时如实报错。"""
         out_dir = config.exports_dir()
         version = self.get_version(version_id)
         base = f"resume_{version['version']}_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -422,6 +571,13 @@ class ResumeService:
             p = out_dir / f"{base}.json"
             p.write_text(
                 json.dumps(version["sections"], ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            return p
+        if fmt == "json-resume":
+            p = out_dir / f"{base}.jsonresume.json"
+            p.write_text(
+                json.dumps(self.export_json_resume(version_id), ensure_ascii=False, indent=2),
+                encoding="utf-8",
             )
             return p
         if fmt == "html":

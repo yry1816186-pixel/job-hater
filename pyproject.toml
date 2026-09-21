@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jobhater"
-version = "2.1.0"
+version = "2.2.0"
 description = "Job Hater — 本地优先的中国求职全流程管理系统（发现→匹配→投递→跟踪→面试→Offer）"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,8 +35,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# mcp 2.x 重命名 FastMCP→MCPServer（breaking change）；钉 <2 直至完成迁移
-mcp = ["mcp>=1.29,<2"]
+# 1.x 用 FastMCP、2.x 更名 MCPServer——mcp_server.py 双路 import 兼容两者
+mcp = ["mcp>=1.29"]
 # 中文词级分词（FTS5 检索质量增强；缺失时自动退回字符 bigram，功能不缺失）
 segment = ["jieba>=0.42"]
 # 简历 DOCX 导出

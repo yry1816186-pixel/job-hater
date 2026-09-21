@@ -8,6 +8,6 @@
 - Local-first：业务数据默认只存本机；启用远程 AI 时明确披露数据出境范围。
 """
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 APP_NAME = "job-hater"

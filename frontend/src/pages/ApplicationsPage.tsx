@@ -125,10 +125,24 @@ export default function ApplicationsPage() {
 
   return (
     <div>
-      <h1>投递看板</h1>
-      <p className="page-sub">
-        {apps.length} 条跟踪 · 状态按真实生命周期推进，「已投递」仅在你亲口确认后生效
-      </p>
+      <div className="between">
+        <div>
+          <h1>投递看板</h1>
+          <p className="page-sub">
+            {apps.length} 条跟踪 · 状态按真实生命周期推进，「已投递」仅在你亲口确认后生效
+          </p>
+        </div>
+        {activeId && (
+          <a
+            className="btn"
+            href={`/api/calendar/ics?profile_id=${activeId}`}
+            download="jobhater.ics"
+            title="投递截止+面试排期导出为 iCalendar，可导入系统/Google 日历"
+          >
+            📅 导出日历
+          </a>
+        )}
+      </div>
       {err && loadFailed && <div className="error-box">加载失败：{err}</div>}
 
       {emptyBoard ? (
