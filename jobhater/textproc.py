@@ -65,12 +65,20 @@ def tokenize_for_fts(text: str | None) -> str:
 
 
 def fts_query(terms: list[str]) -> str:
-    """把用户查询词转成 FTS5 MATCH 表达式（空格分隔 token，AND 语义）。"""
-    toks: list[str] = []
+    """用户查询词 → FTS5 MATCH 表达式。
+
+    词间 AND、词内子片段 OR：同一查询词经分词产生的多个 token（如「机械设计」
+    → 机械设计/机械/设计，随分词器而异）之间是同义展开而非并列条件——
+    文档命中任一子片段即算命中该词，由 BM25 决定强弱。
+    """
+    groups: list[str] = []
     for term in terms:
-        for tok in tokenize_for_fts(term).split():
-            toks.append(f'"{tok}"' if tok else "")
-    return " ".join(t for t in toks if t)
+        toks = [t for t in tokenize_for_fts(term).split() if t]
+        if not toks:
+            continue
+        quoted = [f'"{t}"' for t in dict.fromkeys(toks)]  # 去重保序
+        groups.append(f"({' OR '.join(quoted)})")
+    return " AND ".join(groups)
 
 
 # ---------- 信号词命中（v1 scorer 的词边界算法，防 ASCII 短词误报） ----------

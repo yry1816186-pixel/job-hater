@@ -30,6 +30,9 @@ def main(argv: list[str] | None = None) -> int:
     p_migrate.add_argument("old_data_dir", help="旧版 data/ 目录路径")
     p_migrate.add_argument("--db", default=None, help="目标 SQLite 文件（默认数据目录）")
     sub.add_parser("backup", help="备份数据库到 exports/backups（WAL checkpoint 后复制）")
+    p_fetch = sub.add_parser("fetch", help="从官方接口信源抓取岗位（wenke：米哈游/百度/网易）")
+    p_fetch.add_argument("--companies", nargs="*", help="公司名列表（默认全部）")
+    p_fetch.add_argument("--dry-run", action="store_true", help="只抓不入库（健康检查）")
 
     args = parser.parse_args(argv)
     if args.data_dir:
@@ -71,6 +74,31 @@ def main(argv: list[str] | None = None) -> int:
             con.close()
         shutil.copy2(src, dest)
         print(f"✅ 备份完成：{dest}")
+        return 0
+
+    if args.cmd == "fetch":
+        from jobhater.services.jobs import JobService
+        from jobhater.services.sources import WenkeAdapter
+
+        adapter = WenkeAdapter(companies=args.companies or None)
+        raw = list(adapter.produce())
+        for company, report in adapter.last_fetch_report.items():
+            mark = "✅" if report.ok else "❌"
+            print(f"  {mark} {company}: {report.message}")
+        if args.dry_run:
+            print(f"dry-run：共获取 {len(raw)} 条，未入库")
+            return 0
+        stats = JobService(con).ingest(raw, source_id="wenke")
+        js = JobService(con)
+        ok_any = any(r.ok for r in adapter.last_fetch_report.values())
+        js.record_source_health(
+            "wenke", ok=ok_any,
+            message=adapter.health_check().message,
+        )
+        print(
+            f"收到 {stats.received}：入库 {stats.added}，精确去重 {stats.deduped_exact}，"
+            f"近似 {stats.deduped_near}，补全 {stats.enriched}，拒绝 {stats.rejected}"
+        )
         return 0
 
     if args.cmd == "migrate-v1":

@@ -77,6 +77,7 @@ job-hater match --profile <画像ID>        # 匹配排序榜
 |------|------|------|
 | 粘贴导入 | 任何网站复制 JD 原文 → 解析草稿 → 确认入库 | ✅ 主链，永远可用 |
 | 文件导入 | JSON（数组或 `{"jobs":[...]}`） | ✅ |
+| 校招官网适配器 | `job-hater fetch --companies mihoyo,baidu,netease`（米哈游/百度/网易校招官网公开 JSON API，来自 MIT 项目 wenke-radar 的移植，限速抓取） | ✅ 已接入 |
 | 官方 API 适配器 | `SourceAdapter` 插件契约（capabilities/health_check/rate_policy/provenance） | 契约就绪，适配器按源渐进接入 |
 | MCP | `job-hater-mcp`（10 个工具，官方 SDK） | ✅ Agent 增强层 |
 

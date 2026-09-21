@@ -30,6 +30,8 @@ dependencies = [
     "pydantic>=2.6",
     "httpx>=0.27",
     "keyring>=24",
+    # 中文词级分词：FTS5 检索质量的默认依赖（缺失时仍自动退回字符 bigram，功能不缺失）
+    "jieba>=0.42",
 ]
 
 [project.optional-dependencies]
