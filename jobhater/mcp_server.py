@@ -199,6 +199,76 @@ def offers_compare(offer_ids_json: str) -> str:
         con.close()
 
 
+@mcp.tool()
+def applications_create(job_id: str, profile_id: str) -> str:
+    """为岗位建立投递跟踪（写库，初始 discovered）。只建跟踪不投递——投递永远由用户完成。"""
+    con = _con()
+    try:
+        app_id = ApplicationService(con).create(job_id, profile_id)
+        return json.dumps({"id": app_id, "status": "discovered"}, ensure_ascii=False)
+    except LifecycleError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        con.close()
+
+
+@mcp.tool()
+def paste_parse(jd_text: str, url: str = "") -> str:
+    """粘贴 JD 原文 → 结构化草稿（只读，不落库）。字段抽取依据在 parse_notes 里。"""
+    from jobhater.services.sources import parse_jd_text
+
+    try:
+        draft = parse_jd_text(jd_text, url=url or None)
+        return json.dumps(draft, ensure_ascii=False)
+    except ValueError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+@mcp.tool()
+def preset_get(profile_id: str) -> str:
+    """读取画像当前生效的求职偏好（匹配的全部依据）。只读。"""
+    con = _con()
+    try:
+        preset = ProfileService(con).active_preset(profile_id)
+        if preset is None:
+            return json.dumps({"error": "画像没有求职偏好(preset)"}, ensure_ascii=False)
+        return preset.model_dump_json()
+    finally:
+        con.close()
+
+
+@mcp.tool()
+def ai_egress_disclosure(task: str) -> str:
+    """读取指定 AI 任务的出境数据披露（agent 代用户操作前必须原样呈现该文本）。只读。"""
+    con = _con()
+    try:
+        from jobhater.services.ai import AIService
+
+        return json.dumps(
+            {"task": task, "disclosure": AIService(con).egress_disclosure(task)},
+            ensure_ascii=False,
+        )
+    except KeyError as e:
+        return json.dumps({"error": f"未知任务类型: {e}"}, ensure_ascii=False)
+    finally:
+        con.close()
+
+
+@mcp.tool()
+def materials_interview_questions(profile_id: str, job_id: str) -> str:
+    """生成面试题库（只读分析，不落库；题目只引用画像真实条目）。"""
+    con = _con()
+    try:
+        from jobhater.services.materials import MaterialsService
+
+        out = MaterialsService(con).build_interview_questions(profile_id, job_id)
+        return json.dumps(out, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        con.close()
+
+
 def main() -> None:
     apply_all()
     mcp.run()

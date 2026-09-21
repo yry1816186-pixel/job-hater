@@ -37,16 +37,20 @@ docker compose up --build
 ```bash
 job-hater doctor                          # 环境自检
 job-hater import jobs.json                # 导入岗位 JSON
+job-hater paste --save --url <链接> < jd.txt   # 从 stdin 粘贴 JD 解析入库
 job-hater match --profile <画像ID>        # 匹配排序榜
+job-hater fetch --companies mihoyo        # 官网信源抓取（米哈游/百度/网易）
 ```
 
 ## 第一次使用（5 步）
 
-1. **建档**：「我的画像」→ 创建画像 → 添加技能（可维护同义词）与事实证据（来自你的证书/实习/项目原文）→ 确认证据。
-2. **设方向**：「求职偏好」→ 创建并启用一个 preset（校招/社招/实习、目标角色、城市、薪资底线、经验容忍上限、毕业届数……全部可调）。
-3. **进岗位**：「导入岗位」→ 把任何招聘网站上看到的 JD 原文粘贴进来 → 核对解析草稿 → 入库。（这是主链入口：即使所有自动化信源都不可用，粘贴永远可用。）
-4. **看匹配**：「岗位收件箱」→ 每个岗位带分与结论 → 详情页看六维依据（技能/经历/地点/薪资/时效/反馈）与硬性 gate 检查。
-5. **管投递**：详情页「收藏并开始跟踪」→「投递看板」推进状态 → 你亲手投递后点「我已投递」。
+打开 Web 界面后，总览页有一个**开始清单**，跟着点就行：
+
+1. **建档**：「我的画像」按步骤 1-5 组织——学历经历 → 技能（含同义词） → 事实证据 → 求职偏好。每节开头都写明「这步影响什么」。
+2. **设方向**：「求职偏好」默认**不限批次**（避免悄悄过滤），按需收窄：目标角色、城市、薪资底线、经验上限、毕业届数。
+3. **进岗位**：「导入岗位」→ 粘贴任何网站的 JD 原文 → 核对草稿 → 入库（**你核对修改的字段不会被覆盖**）。粘贴是主链入口：即使所有自动化信源都不可用，粘贴永远可用。
+4. **看匹配**：「岗位收件箱」每个岗位带分与四档结论（强烈推荐/推荐/可考虑/暂缓）→ 详情页看六维依据与硬性 gate 检查（含疑似薪资倒挂提示）。
+5. **备材料 & 管投递**：详情页「材料工坊」一键生成**岗位定制简历 / 求职信 / 打招呼话术 / 面试题库 / 技能提升计划**（全部本地确定性生成，不用 AI）；「收藏并开始跟踪」后去投递看板推进——准备漏斗可一键跳步，**「我已投递」只在你亲口确认后生效**。
 
 ## 命令行参考
 
@@ -55,8 +59,15 @@ job-hater match --profile <画像ID>        # 匹配排序榜
 | `job-hater serve` | 启动本地 Web 服务（127.0.0.1:8787） |
 | `job-hater doctor` | 数据库/迁移/信源自检 |
 | `job-hater import <file.json> [--source manual]` | 导入岗位（数组或 `{"jobs":[...]}`） |
+| `job-hater paste [--save] [--url <链接>]` | stdin 读 JD 原文：默认出草稿，`--save` 入库 |
+| `job-hater jobs [--q 关键词] [--limit N]` | 检索列出岗位 |
 | `job-hater match --profile <id> [--preset <id>]` | 匹配排序 |
+| `job-hater applications --profile <id>` | 列出投递跟踪（含岗位名） |
+| `job-hater transition <投递ID> <状态> [--note]` | 推进状态（漏斗内可跳步） |
+| `job-hater confirm-applied <投递ID> [--channel 官网]` | 用户确认已投递（投后阶段唯一入口） |
+| `job-hater fetch [--companies mihoyo,baidu,netease] [--dry-run]` | 官网信源抓取 |
 | `job-hater migrate-v1 <旧data目录>` | 从 v1 (Campus-Job-Agent) JSON 一次性迁移 |
+| `job-hater backup` | WAL checkpoint 后复制数据库到 exports/backups |
 
 ## AI 能力与隐私（如实说明）
 
@@ -79,7 +90,7 @@ job-hater match --profile <画像ID>        # 匹配排序榜
 | 文件导入 | JSON（数组或 `{"jobs":[...]}`） | ✅ |
 | 校招官网适配器 | `job-hater fetch --companies mihoyo,baidu,netease`（米哈游/百度/网易校招官网公开 JSON API，来自 MIT 项目 wenke-radar 的移植，限速抓取） | ✅ 已接入 |
 | 官方 API 适配器 | `SourceAdapter` 插件契约（capabilities/health_check/rate_policy/provenance） | 契约就绪，适配器按源渐进接入 |
-| MCP | `job-hater-mcp`（10 个工具，官方 SDK） | ✅ Agent 增强层 |
+| MCP | `job-hater-mcp`（16 个工具，官方 SDK） | ✅ Agent 增强层 |
 
 导入统一走分层去重：同源同 ID → 跨源同岗键 → 近似标题（标记人工复核）→ 内容指纹。每条岗位保留原始快照与来源。
 
