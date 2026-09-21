@@ -458,7 +458,7 @@ def env_info(n: int, seed: int, batch_size: int, runs: int) -> dict:
     except Exception:  # 未安装（直接源码运行）时如实标注
         app_version = None
     return {
-        "timestamp_utc": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp_utc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "python": platform.python_version(),
         "python_implementation": platform.python_implementation(),
         "os": f"{platform.system()} {platform.release()}",

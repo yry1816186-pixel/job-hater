@@ -31,7 +31,7 @@ COMMERCIAL_RISK_WORDS = ["商业", "营收", "收入", "签约", "甲方", "客�
 
 
 def _now() -> str:
-    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 class ResumeError(ValueError):

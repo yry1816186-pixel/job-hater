@@ -308,7 +308,7 @@ _DEGREE_RANK = {"大专": 1, "专科": 1, "本科": 2, "学士": 2, "硕士": 3,
 
 
 def _now_sql() -> str:
-    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def degree_rank(degree: str | None) -> int | None:

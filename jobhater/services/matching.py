@@ -100,7 +100,7 @@ _GRAD_YEAR_RE_STR = r"(20\d{2})\s*届"
 
 
 def _now() -> str:
-    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%f.%f")[:-3] + "Z"
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%f.%f")[:-3] + "Z"
 
 
 def _job_text(job: JobPosting) -> str:
@@ -578,7 +578,7 @@ class MatchService:
                      dims_json, evidence_json, needs_review
                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    f"mt_{outcome.job_id}_{outcome.profile_id}_{dt.datetime.now(dt.UTC).strftime('%H%M%S%f')}",
+                    f"mt_{outcome.job_id}_{outcome.profile_id}_{dt.datetime.now(dt.timezone.utc).strftime('%H%M%S%f')}",
                     outcome.job_id, outcome.profile_id, outcome.preset_id,
                     outcome.engine_version, outcome.eligible,
                     json.dumps([g.model_dump() for g in outcome.gate_reasons], ensure_ascii=False),
