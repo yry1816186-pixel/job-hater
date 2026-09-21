@@ -383,3 +383,80 @@ def test_api_wechat_import_with_fake_result(tmp_path, monkeypatch):
         r = client.get("/api/jobs", params={"q": "后端工程师"})
         assert r.status_code == 200
     config.set_data_dir(None)
+
+
+# ==================== 密码式验证 / 结构定位 / DLL XOR（社区方法产品化） ====================
+
+
+def test_verify_as_password_roundtrip(tmp_path):
+    """passphrase → PBKDF2 派生 enc_key 加密 → 密码式验证应还原 enc_key。"""
+    import hashlib
+    import secrets as _secrets
+
+    from jobhater.services.wechat.decrypt import encrypt_database_for_test
+    from jobhater.services.wechat.keyring_scan import KDF_ITER, verify_as_password
+
+    plain = tmp_path / "p.db"
+    build_wcdb_style_db(plain, 10)
+    pw = _secrets.token_bytes(32)
+    salt = _secrets.token_bytes(16)
+    enc_key = hashlib.pbkdf2_hmac("sha512", pw, salt, KDF_ITER, 32)
+    enc = tmp_path / "p.enc.db"
+    encrypt_database_for_test(plain, enc, enc_key, salt)
+
+    page1 = enc.read_bytes()[:4096]
+    got = verify_as_password(pw, page1)
+    assert got == enc_key, "正确 passphrase 应还原 enc_key"
+    assert verify_as_password(_secrets.token_bytes(32), page1) is None
+
+
+def test_looks_like_secret_filter():
+    import secrets as _secrets
+
+    from jobhater.services.wechat.keyring_scan import _looks_like_secret
+
+    assert _looks_like_secret(_secrets.token_bytes(32))
+    assert not _looks_like_secret(b"hello world this is plain text!!!")  # 可打印过多
+    assert not _looks_like_secret(b"\x00" * 32)  # 全零
+    assert not _looks_like_secret(b"ab" * 16)  # 字节种类过少
+
+
+def test_dll_xor_keys_pattern(tmp_path):
+    """合成含 4×mov rdx,imm64 模式的伪 DLL → 应提取出拼接的 32B。"""
+    from jobhater.services.wechat.keyring_scan import dll_xor_keys
+
+    key_parts = [b"AAAABBBB", b"CCCCDDDD", b"EEEEFFFF", b"GGGGHHHH"]
+    blob = (
+        b"\x90" * 64
+        + b"\x48\xBA" + key_parts[0] + b"\x90\x90\x90"
+        + b"\x48\xBA" + key_parts[1] + b"\x90\x90\x90\x90"
+        + b"\x48\xBA" + key_parts[2] + b"\x90\x90\x90"
+        + b"\x48\xBA" + key_parts[3] + b"\x90\x90\x90\x90"
+        + b"\x48\x85\xC0"
+        + b"\x00" * 128
+    )
+    fake_root = tmp_path / "4.9.9.9"
+    fake_root.mkdir()
+    (fake_root / "Weixin.dll").write_bytes(blob)
+    keys = dll_xor_keys(str(tmp_path))
+    assert b"".join(key_parts) in keys
+
+
+def test_struct_candidates_layouts():
+    """两种布局签名都能解引用出候选。"""
+    from jobhater.services.wechat.keyring_scan import _struct_candidates
+
+    secret = bytes(range(32))
+    fake_heap = {0x50000: secret}
+
+    def reader(addr: int) -> bytes:
+        return fake_heap.get(addr, b"")
+
+    # 布局A: [ptr][0×8][32][47]
+    mem_a = (0x50000).to_bytes(8, "little") + b"\x00" * 8 + (32).to_bytes(8, "little") + (47).to_bytes(8, "little")
+    assert secret in list(_struct_candidates(mem_a, reader))
+    # 布局B: [ptr 末2字节零][size=32] 紧邻
+    mem_b = (0x50000).to_bytes(8, "little") + (32).to_bytes(8, "little") + b"junk"
+    assert secret in list(_struct_candidates(mem_b, reader))
+    # 无签名 → 无候选
+    assert list(_struct_candidates(b"\x00" * 64, reader)) == []

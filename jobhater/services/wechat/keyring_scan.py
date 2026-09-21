@@ -13,11 +13,28 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wt
+import hashlib
 import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from jobhater.services.wechat.decrypt import quick_screen, verify_key
+
+KDF_ITER = 256_000
+
+
+def verify_as_password(passphrase: bytes, page1: bytes) -> bytes | None:
+    """密码式验证（新版 WCDB：内存存 passphrase，每库 PBKDF2 派生 enc_key）。
+
+    返回派生出的 enc_key（可用于直接解密），不匹配返回 None。
+    成本 ≈ 一次 256000 轮 PBKDF2-SHA512（约 0.2s），调用方须先做候选筛减。
+    """
+    salt = page1[:16]
+    enc_key = hashlib.pbkdf2_hmac("sha512", passphrase, salt, KDF_ITER, 32)
+    if verify_key(enc_key, page1):
+        return enc_key
+    return None
 
 _api_cache: dict[str, ctypes.WinDLL] = {}
 
@@ -150,6 +167,114 @@ def _raw_candidates(data: bytes) -> Iterator[bytes]:
         yield bytes(arr[off : off + 32])
 
 
+# ---- 结构定位候选（社区方法: 密钥容器布局签名 → 指针解引用）----
+# 布局A: [8B ptr][8B 0][8B len=32][8B cap=47]（WeChatDataAnalysis 的 YARA 规则）
+_STUB_A = b"\x00" * 10 + (32).to_bytes(8, "little") + (47).to_bytes(8, "little")
+# 布局B: MSVC std::string [8B ptr 末2字节零][8B size=32] 紧邻
+_STUB_B = b"\x00\x00" + (32).to_bytes(8, "little")
+
+
+def _deref_targets(data: bytes, ptr_reader: Callable[[int], bytes]) -> Iterator[int]:
+    """从两种布局签名解出密钥指针。``ptr_reader(addr)->32B`` 由调用方提供。"""
+    for stub, back in ((_STUB_A, 6), (_STUB_B, 6)):
+        pos = data.find(stub)
+        while pos >= 0:
+            ptr_off = pos - back
+            if ptr_off >= 0:
+                ptr = int.from_bytes(data[ptr_off : ptr_off + 8], "little")
+                if 0x10000 < ptr < 0x7FFF_FFFF_FFFF:
+                    yield ptr
+            pos = data.find(stub, pos + 1)
+
+
+def _struct_candidates(data: bytes, read_at: Callable[[int], bytes]) -> Iterator[bytes]:
+    """布局签名定位的指针解引用候选（ passphrase 形态，需配 DLL XOR 验证）。"""
+    for ptr in _deref_targets(data, read_at):
+        kb = read_at(ptr)
+        if len(kb) == 32 and _looks_like_secret(kb):
+            yield kb
+
+
+def _looks_like_secret(key: bytes) -> bool:
+    """密码学随机 32B 的快速统计筛（区分普通文本/指针串）。"""
+    return len(set(key)) >= 15 and sum(32 <= b <= 126 for b in key) <= 24
+
+
+# ---- Weixin.dll 内的 XOR 混淆密钥（4×mov rdx,imm64 汇编模式）----
+_MOV_RDX_PATTERN = re.compile(
+    b"^\x48\xBA(.{8})"
+    b".{3,8}?"
+    b"\x48\xBA(.{8})"
+    b".{3,8}?"
+    b"\x48\xBA(.{8})"
+    b".{3,8}?"
+    b"\x48\xBA(.{8})"
+    b".{3,8}?"
+    b"\x48\x85\xC0",
+    re.DOTALL,
+)
+
+
+def dll_xor_keys(install_path: str | None = None) -> list[bytes]:
+    """从 Weixin.dll 提取 XOR 混淆密钥候选（每个 32B）。
+
+    安装目录自动发现（注册表 → 常见位置 → 版本子目录内最大的 Weixin.dll）。
+    读取失败/找不到返回空列表（密码验证退化为直通模式）。
+    """
+    dll = _locate_weixin_dll(install_path)
+    if dll is None:
+        return []
+    try:
+        data = Path(dll).read_bytes()
+    except OSError:
+        return []
+    keys: list[bytes] = []
+    offset = 0
+    while True:
+        idx = data.find(b"\x48\xBA", offset)
+        if idx == -1:
+            break
+        m = _MOV_RDX_PATTERN.match(data[idx : idx + 85])
+        if m:
+            k = m.group(1) + m.group(2) + m.group(3) + m.group(4)
+            if k not in keys:
+                keys.append(k)
+            offset = idx + len(m.group(0))
+        else:
+            offset = idx + 1
+    return keys
+
+
+def _locate_weixin_dll(install_path: str | None) -> str | None:
+    import os
+
+    root = install_path
+    if root is None:
+        root = _default_wechat_install()
+    if not root or not os.path.isdir(root):
+        return None
+    best: tuple[int, str] | None = None
+    for d in os.listdir(root):
+        cand = os.path.join(root, d, "Weixin.dll")
+        if os.path.isfile(cand):
+            size = os.path.getsize(cand)
+            if best is None or size > best[0]:
+                best = (size, cand)
+    return best[1] if best else None
+
+
+def _default_wechat_install() -> str | None:
+    import os
+
+    for env in ("PROGRAMFILES", "PROGRAMFILES(X86)"):
+        base = os.environ.get(env)
+        if base:
+            p = os.path.join(base, "Tencent", "Weixin")
+            if os.path.isdir(p):
+                return p
+    return None
+
+
 @dataclass
 class ScanProgress:
     """进度快照（前端轮询用）。"""
@@ -207,6 +332,19 @@ def find_key(
     def _match(cand: bytes) -> bool:
         return any(quick_screen(cand, p1) and verify_key(cand, p1) for p1 in anchors)
 
+    # DLL XOR 混淆密钥（新版 WCDB 密码式验证所需; 提取失败退化为直通）
+    xor_keys = dll_xor_keys()
+
+    def _match_password(pw: bytes) -> bytes | None:
+        """密码式: 直通 + XOR 混淆两种形态 × 全锚点。返回 enc_key。"""
+        forms = [pw] + [bytes(a ^ b for a, b in zip(pw, xk, strict=True)) for xk in xor_keys]
+        for form in forms:
+            for p1 in anchors:
+                ek = verify_as_password(form, p1)
+                if ek is not None:
+                    return ek
+        return None
+
     for pid, _mem in targets:
         h = k.OpenProcess(0x0410, False, pid)
         if not h:
@@ -232,6 +370,16 @@ def find_key(
                             if progress:
                                 progress(prog)
                             return cand
+                    # 结构定位候选 → 密码式验证（新版 WCDB; 已熵筛）
+                    proc_handle = h
+                    for pw in _struct_candidates(data, lambda a, _h=proc_handle: _read(k, _h, a, 32)):
+                            prog.candidates += 1
+                            ek = _match_password(pw)
+                            if ek is not None:
+                                prog.phase = "done"
+                                if progress:
+                                    progress(prog)
+                                return ek
                     for cand in _raw_candidates(data):
                         prog.candidates += 1
                         if _match(cand):
