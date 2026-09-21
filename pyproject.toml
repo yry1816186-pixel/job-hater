@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jobhater"
-version = "3.0.0"
+version = "3.1.0"
 description = "Job Hater — 本地优先的中国求职全流程管理系统（发现→匹配→投递→跟踪→面试→Offer）"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,6 +32,9 @@ dependencies = [
     "keyring>=24",
     # 中文词级分词：FTS5 检索质量的默认依赖（缺失时仍自动退回字符 bigram，功能不缺失）
     "jieba>=0.42",
+    # 简历导入冷启动链：读取用户上传的 PDF（文本层）/DOCX 简历
+    "pypdf>=4.0",
+    "python-docx>=1.1",
 ]
 
 [project.optional-dependencies]

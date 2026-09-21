@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import type { Evidence, Preset, ProfileView } from '../types'
 import { useProfiles } from '../App'
@@ -35,7 +35,7 @@ export default function ProfilePage() {
   const [newHeadline, setNewHeadline] = useState('')
   const [newPhone, setNewPhone] = useState('')
   const [newEmail, setNewEmail] = useState('')
-  const [contact, setContact] = useState({ phone: '', email: '' })
+  const [contact, setContact] = useState({ phone: '', email: '', summary: '', name: '' })
 
   // 各表单受控态
   const [skillName, setSkillName] = useState('')
@@ -46,6 +46,7 @@ export default function ProfilePage() {
   })
   const [expForm, setExpForm] = useState({ employer: '', title: '', tags: '', desc: '' })
   const [eduForm, setEduForm] = useState({ school: '', degree: '', major: '' })
+  const [prjForm, setPrjForm] = useState({ name: '', role: '', desc: '' })
   const [confirmReset, setConfirmReset] = useState(false)
 
   const load = () => {
@@ -60,7 +61,12 @@ export default function ProfilePage() {
         setView(v)
         setEvidence(e)
         setPresets(p)
-        setContact({ phone: v.profile.phone ?? '', email: v.profile.email ?? '' })
+        setContact({
+          phone: v.profile.phone ?? '',
+          email: v.profile.email ?? '',
+          summary: v.profile.summary ?? '',
+          name: v.profile.display_name,
+        })
       })
       .catch((er) => setErr(er.message))
   }
@@ -96,11 +102,15 @@ export default function ProfilePage() {
   const saveContact = () =>
     guard(async () => {
       if (!activeId) return
-      await api.patch(`/profiles/${activeId}`, {
-        phone: contact.phone.trim(),
-        email: contact.email.trim(),
-      })
-      toast('success', '联系方式已保存（写入简历头部与求职信落款）')
+      const changed: Record<string, string> = {}
+      if (contact.phone.trim() !== (view?.profile.phone ?? '')) changed.phone = contact.phone.trim()
+      if (contact.email.trim() !== (view?.profile.email ?? '')) changed.email = contact.email.trim()
+      if (contact.summary.trim() !== (view?.profile.summary ?? '')) changed.summary = contact.summary.trim()
+      if (contact.name.trim() !== view?.profile.display_name) changed.display_name = contact.name.trim()
+      if (!Object.keys(changed).length) return
+      await api.patch(`/profiles/${activeId}`, changed)
+      if (changed.display_name) await refresh()
+      toast('success', '已保存（写入简历头部与求职信落款）')
       load()
     })
 
@@ -171,6 +181,27 @@ export default function ProfilePage() {
       })
       setEduForm({ school: '', degree: '', major: '' })
       toast('success', '学历已添加')
+      load()
+    })
+
+  const addProject = () =>
+    guard(async () => {
+      if (!activeId || !prjForm.name.trim()) return
+      await api.post(`/profiles/${activeId}/projects`, {
+        name: prjForm.name.trim(),
+        role: prjForm.role.trim() || null,
+        description: prjForm.desc.trim() || null,
+      })
+      setPrjForm({ name: '', role: '', desc: '' })
+      toast('success', '项目已添加（简历与匹配都会用到）')
+      load()
+    })
+
+  const delChild = (kind: 'educations' | 'experiences' | 'projects', id: string, label: string) =>
+    guard(async () => {
+      if (!activeId) return
+      await api.del(`/profiles/${activeId}/${kind}/${id}`)
+      toast('info', `${label} 已删除`)
       load()
     })
 
@@ -250,6 +281,11 @@ export default function ProfilePage() {
       </p>
       {err && <div className="error-box">{err}</div>}
 
+      <div className="card" style={{ padding: 12, marginBottom: 16, fontSize: 14 }}>
+        💡 手里有一份现成简历？<Link to="/welcome">上传文件自动建档 →</Link>
+        <span className="hint">（PDF / DOCX / TXT / MD / JSON Resume，解析后逐项核对才入库）</span>
+      </div>
+
       {profiles.length > 1 && !showCreate && (
         <p className="hint">切换画像用左侧下拉框；共 {profiles.length} 个画像。</p>
       )}
@@ -280,13 +316,21 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* 联系方式：简历 basics 的法定字段，缺了简历没法被联系 */}
+      {/* 基本信息：姓名/联系方式/简介——简历 basics 的法定字段 */}
       <div className="card" style={{ padding: 20, marginBottom: 20 }}>
-        <b>联系方式</b>
+        <b>基本信息与联系方式</b>
         <p className="hint" style={{ margin: '4px 0 10px' }}>
           写入简历头部与求职信落款。数据只在本机，不参与匹配打分。
         </p>
         <div className="row">
+          <input
+            type="text"
+            placeholder="姓名"
+            value={contact.name}
+            onChange={(e) => setContact((c) => ({ ...c, name: e.target.value }))}
+            style={{ width: 160 }}
+            aria-label="姓名"
+          />
           <input
             type="tel"
             placeholder="手机号"
@@ -303,6 +347,15 @@ export default function ProfilePage() {
             style={{ flex: 1, minWidth: 200 }}
             aria-label="邮箱"
           />
+        </div>
+        <textarea
+          placeholder="个人简介（可选，2-3 句：方向 + 亮点 + 求职目标）"
+          value={contact.summary}
+          onChange={(e) => setContact((c) => ({ ...c, summary: e.target.value }))}
+          style={{ marginTop: 8, minHeight: 56, width: '100%' }}
+          aria-label="个人简介"
+        />
+        <div className="row" style={{ marginTop: 8 }}>
           <button
             className="btn"
             onClick={saveContact}
@@ -310,16 +363,18 @@ export default function ProfilePage() {
               !!activeId
               && contact.phone === (view?.profile.phone ?? '')
               && contact.email === (view?.profile.email ?? '')
+              && contact.summary === (view?.profile.summary ?? '')
+              && contact.name === view?.profile.display_name
             }
           >
             保存
           </button>
+          {!view?.profile.phone && !view?.profile.email && (
+            <span className="hint" style={{ color: 'var(--warn, #b8860b)' }}>
+              ⚠ 还没有任何联系方式——导出的简历头部将是空的，投递前务必补上。
+            </span>
+          )}
         </div>
-        {!view?.profile.phone && !view?.profile.email && (
-          <p className="hint" style={{ marginTop: 8, color: 'var(--warn, #b8860b)' }}>
-            ⚠ 还没有任何联系方式——导出的简历头部将是空的，投递前务必补上。
-          </p>
-        )}
       </div>
 
       {/* 第 1 步：学历与经历（简历主体素材） */}
@@ -334,18 +389,42 @@ export default function ProfilePage() {
           <>
             {view.educations.map((e) => (
               <div key={e.id} className="list-row">
-                🎓 <b>{e.school}</b> {e.degree ? `· ${e.degree}` : ''} {e.major ? `· ${e.major}` : ''}
+                <span style={{ flex: 1 }}>
+                  🎓 <b>{e.school}</b> {e.degree ? `· ${e.degree}` : ''} {e.major ? `· ${e.major}` : ''}
+                </span>
+                <button
+                  className="icon-btn"
+                  aria-label={`删除学历 ${e.school}`}
+                  title="删除（录错了点这里）"
+                  onClick={() => delChild('educations', e.id, `学历 ${e.school}`)}
+                >✕</button>
               </div>
             ))}
             {view.experiences.map((e) => (
               <div key={e.id} className="list-row">
-                💼 <b>{e.title}</b> @ {e.employer}
-                {e.tags.length ? <span className="tag" style={{ marginLeft: 8 }}>{e.tags.join(' · ')}</span> : null}
+                <span style={{ flex: 1 }}>
+                  💼 <b>{e.title}</b> @ {e.employer}
+                  {e.tags.length ? <span className="tag" style={{ marginLeft: 8 }}>{e.tags.join(' · ')}</span> : null}
+                </span>
+                <button
+                  className="icon-btn"
+                  aria-label={`删除经历 ${e.employer}`}
+                  title="删除（录错了点这里）"
+                  onClick={() => delChild('experiences', e.id, `经历 ${e.employer}`)}
+                >✕</button>
               </div>
             ))}
             {view.projects.map((p) => (
               <div key={p.id} className="list-row">
-                🛠 <b>{p.name}</b>{p.role ? ` · ${p.role}` : ''}
+                <span style={{ flex: 1 }}>
+                  🛠 <b>{p.name}</b>{p.role ? ` · ${p.role}` : ''}
+                </span>
+                <button
+                  className="icon-btn"
+                  aria-label={`删除项目 ${p.name}`}
+                  title="删除（录错了点这里）"
+                  onClick={() => delChild('projects', p.id, `项目 ${p.name}`)}
+                >✕</button>
               </div>
             ))}
           </>
@@ -377,6 +456,17 @@ export default function ProfilePage() {
             </div>
             <textarea placeholder="做了什么（可选，写关键事实）" value={expForm.desc} onChange={(e) => setExpForm({ ...expForm, desc: e.target.value })} style={{ marginTop: 8, minHeight: 56, width: '100%' }} />
             <button className="btn" style={{ marginTop: 8 }} onClick={addExperience} disabled={!expForm.employer.trim() || !expForm.title.trim()}>添加</button>
+          </div>
+        </details>
+        <details style={{ marginTop: 8 }}>
+          <summary className="btn">＋ 添加项目</summary>
+          <div style={{ marginTop: 10 }}>
+            <div className="row">
+              <input type="text" placeholder="项目名" value={prjForm.name} onChange={(e) => setPrjForm({ ...prjForm, name: e.target.value })} style={{ flex: 2 }} />
+              <input type="text" placeholder="角色（可选，如 核心开发）" value={prjForm.role} onChange={(e) => setPrjForm({ ...prjForm, role: e.target.value })} style={{ flex: 1 }} />
+            </div>
+            <textarea placeholder="项目描述 / 技术栈（可选）" value={prjForm.desc} onChange={(e) => setPrjForm({ ...prjForm, desc: e.target.value })} style={{ marginTop: 8, minHeight: 56, width: '100%' }} />
+            <button className="btn" style={{ marginTop: 8 }} onClick={addProject} disabled={!prjForm.name.trim()}>添加</button>
           </div>
         </details>
       </div>

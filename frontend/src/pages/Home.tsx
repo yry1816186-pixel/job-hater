@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, qs } from '../api'
 import type {
   Application, Job, JobSourceInfo, MatchOutcome, Preset, ProfileView,
@@ -110,8 +110,10 @@ function ReminderPanel({ profileId }: { profileId: string | null }) {
 export default function Home() {
   const { profiles, activeId } = useProfiles()
   const { toast } = useToast()
+  const navigate = useNavigate()
   const [jobs, setJobs] = useState<Job[]>([])
   const [jobsTotal, setJobsTotal] = useState(0)
+  const [jobLookup, setJobLookup] = useState<Record<string, Job>>({})
   const [apps, setApps] = useState<Application[]>([])
   const [sources, setSources] = useState<JobSourceInfo[]>([])
   const [topMatches, setTopMatches] = useState<MatchOutcome[]>([])
@@ -127,7 +129,8 @@ export default function Home() {
     hasPreset: presets.length > 0,
     hasJobs: jobsTotal > 0,
   }
-  const setupDone = setup.hasProfile && setup.hasPreset && setup.hasJobs
+  // 完成口径与下方清单一致：五项全绿才撤下引导（技能/经历是匹配质量的根基，不算可选项）
+  const setupDone = Object.values(setup).every(Boolean)
   const setupSteps = [
     { done: setup.hasProfile, label: '建立画像（姓名+一句话介绍）', to: '/profile' },
     { done: setup.hasSkills, label: '添加技能（匹配引擎识别 JD 的依据）', to: '/profile' },
@@ -142,14 +145,16 @@ export default function Home() {
     setErr('')
     Promise.all([
       api.get<{ total: number; items: Job[] }>(`/jobs${qs({ limit: 5, status: 'active' })}`),
+      api.get<{ total: number; items: Job[] }>(`/jobs${qs({ limit: 200, status: 'active' })}`),
       api.get<Application[]>(`/applications${qs({ profile_id: activeId })}`),
       api.get<JobSourceInfo[]>('/sources'),
       api.get<ProfileView>(`/profiles/${activeId}`),
       api.get<Preset[]>(`/profiles/${activeId}/presets`),
     ])
-      .then(([j, a, s, p, ps]) => {
+      .then(([j, all, a, s, p, ps]) => {
         setJobs(j.items)
         setJobsTotal(j.total)
+        setJobLookup(Object.fromEntries(all.items.map((x) => [x.id, x])))
         setApps(a)
         setSources(s)
         setView(p)
@@ -182,6 +187,15 @@ export default function Home() {
 
   // ---------- 新用户（无画像） ----------
   if (!profiles.length) {
+    const seedDemo = async () => {
+      try {
+        const r = await api.post<{ added: number; deduped: number }>('/demo/seed')
+        toast('success', `已导入 ${r.added} 条示例岗位——先随便看看，建档后会有匹配分`)
+        navigate('/jobs')
+      } catch (e) {
+        toast('error', (e as Error).message)
+      }
+    }
     return (
       <div>
         <h1>欢迎使用 Job Hater</h1>
@@ -190,13 +204,16 @@ export default function Home() {
           全部数据只保存在你这台电脑上。
         </p>
         <div className="card" style={{ padding: 24 }}>
-          <h2 style={{ marginTop: 0 }}>三步开始</h2>
-          <ol className="setup-list">
-            <li><b>建档</b>：姓名、学历、技能——匹配和简历都从这里长出来（2 分钟）</li>
-            <li><b>定方向</b>：目标城市 / 角色类型 / 薪资底线，随时可改</li>
-            <li><b>导岗位</b>：在任何招聘网站看到心仪岗位，复制 JD 粘贴进来</li>
-          </ol>
-          <Link className="btn primary" to="/profile">开始建档 →</Link>
+          <h2 style={{ marginTop: 0 }}>从一份现成的简历开始（3 分钟）</h2>
+          <p style={{ margin: '4px 0 14px', fontSize: 14.5 }}>
+            上传你的简历文件（PDF / DOCX / TXT / MD / JSON Resume），系统自动解析出
+            学历、经历、技能——你核对一遍就完成建档；没有文件也可以粘贴文本或手动填写。
+          </p>
+          <div className="row" style={{ flexWrap: 'wrap' }}>
+            <Link className="btn primary" to="/welcome">上传简历，开始建档 →</Link>
+            <Link className="btn" to="/profile">手动建档</Link>
+            <button className="btn" onClick={seedDemo}>先看看示例（导入 8 条演示岗位）</button>
+          </div>
           <p className="hint" style={{ marginTop: 12 }}>
             本系统不会代替你投递，不会上传你的数据，AI 功能默认关闭。
           </p>
@@ -275,7 +292,7 @@ export default function Home() {
         <>
           <h2>匹配前列（点开看依据）</h2>
           {topMatches.map((m) => {
-            const job = jobs.find((j) => j.id === m.job_id)
+            const job = jobLookup[m.job_id]
             return (
               <Link className="job-item card" key={m.job_id} to={`/jobs/${m.job_id}`} style={{ display: 'block' }}>
                 <div className="between">

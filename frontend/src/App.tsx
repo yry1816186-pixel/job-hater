@@ -10,6 +10,7 @@ import ImportPage from './pages/ImportPage'
 import JobDetailPage from './pages/JobDetailPage'
 import JobsPage from './pages/JobsPage'
 import OffersPage from './pages/OffersPage'
+import OnboardingPage from './pages/OnboardingPage'
 import ProfilePage from './pages/ProfilePage'
 import ResumePage from './pages/ResumePage'
 import SettingsPage from './pages/SettingsPage'
@@ -47,6 +48,7 @@ function NotFound() {
 
 const COMMAND_DESTS = [
   { to: '/', label: '总览 · 今日提醒与开始清单', hint: '页面' },
+  { to: '/welcome', label: '新手向导 · 上传简历建档', hint: '页面' },
   { to: '/jobs', label: '岗位收件箱', hint: '页面' },
   { to: '/applications', label: '投递看板', hint: '页面' },
   { to: '/analytics', label: '求职分析 · 漏斗与洞察', hint: '页面' },
@@ -214,7 +216,8 @@ export default function App() {
               </Link>
               <ProfileSwitcher />
               <NavLink to="/" end className={navCls}>总览</NavLink>
-              <div className="nav-group">准备 <small>（首次使用先做这两步）</small></div>
+              <div className="nav-group">准备 <small>（首次使用：向导 → 导岗位）</small></div>
+              <NavLink to="/welcome" className={navCls}>新手向导</NavLink>
               <NavLink to="/profile" className={navCls}>我的画像</NavLink>
               <NavLink to="/import" className={navCls}>导入岗位</NavLink>
               <div className="nav-group">求职推进</div>
@@ -237,6 +240,7 @@ export default function App() {
             <main className="main">
               <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/welcome" element={<OnboardingPage />} />
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/jobs/:jobId" element={<JobDetailPage />} />
                 <Route path="/import" element={<ImportPage />} />

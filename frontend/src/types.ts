@@ -286,6 +286,75 @@ export interface SavedSearch {
   params: Record<string, string | number | boolean | undefined>
 }
 
+// ---------- 简历导入草稿（JSON Resume 形状；经用户核对后落库） ----------
+
+export interface ResumeDraftBasics {
+  name: string
+  label: string
+  summary: string
+  email: string
+  phone: string
+}
+
+export interface ResumeDraftWork {
+  name: string
+  position: string
+  startDate: string
+  endDate: string
+  summary: string
+}
+
+export interface ResumeDraftEducation {
+  institution: string
+  studyType: string
+  area: string
+  startDate: string
+  endDate: string
+}
+
+export interface ResumeDraftProject {
+  name: string
+  role: string
+  description: string
+}
+
+export interface ResumeDraftSkill {
+  name: string
+  keywords?: string[]
+}
+
+export interface ResumeDraft {
+  basics: ResumeDraftBasics
+  work: ResumeDraftWork[]
+  education: ResumeDraftEducation[]
+  projects: ResumeDraftProject[]
+  skills: ResumeDraftSkill[]
+  awards: Array<{ title: string }>
+}
+
+export interface ParseResumeResult {
+  draft: ResumeDraft
+  warnings: string[]
+  source_kind: string
+  text_preview?: string
+  ai_available?: boolean
+}
+
+export interface DemoSeedResult {
+  added: number
+  deduped: number
+  note: string
+}
+
+export interface DemoClearResult {
+  deleted: number
+  kept: number
+}
+
+export interface DemoStatus {
+  demo_jobs: number
+}
+
 export interface ApplicationEvent {
   id: number
   application_id: string

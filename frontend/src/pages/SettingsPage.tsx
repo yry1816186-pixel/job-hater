@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, qs } from '../api'
-import type { AIProviderInfo, JobSourceInfo, Profile } from '../types'
+import type { AIProviderInfo, DemoStatus, JobSourceInfo, Profile } from '../types'
 import { AI_TASK_LABELS, ConfirmDialog, useToast } from '../components/ui'
 
 /** 设置与隐私：AI Provider（opt-in）、信源健康、数据出境披露、备份恢复与导出 */
@@ -9,6 +10,7 @@ export default function SettingsPage() {
   const [providers, setProviders] = useState<AIProviderInfo[]>([])
   const [sources, setSources] = useState<JobSourceInfo[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [demo, setDemo] = useState<DemoStatus | null>(null)
   const [egress, setEgress] = useState<Record<string, string>>({})
   const [form, setForm] = useState({
     kind: 'openai_compatible',
@@ -20,12 +22,15 @@ export default function SettingsPage() {
   const [msg, setMsg] = useState('')
   const [restoring, setRestoring] = useState(false)
   const [confirmRestore, setConfirmRestore] = useState<File | null>(null)
+  const [confirmDemoClear, setConfirmDemoClear] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const jsonResumeRef = useRef<HTMLInputElement>(null)
 
   const load = () => {
     api.get<AIProviderInfo[]>('/ai/providers').then(setProviders).catch(() => {})
     api.get<JobSourceInfo[]>('/sources').then(setSources).catch(() => {})
     api.get<Profile[]>('/profiles').then(setProfiles).catch(() => {})
+    api.get<DemoStatus>('/demo/status').then(setDemo).catch(() => setDemo(null))
   }
   useEffect(load, [])
 
@@ -115,6 +120,55 @@ export default function SettingsPage() {
     }
   }
 
+  // ---------- 新手向导 / 示例数据 / JSON Resume 导入 ----------
+
+  const seedDemo = async () => {
+    setErr('')
+    try {
+      const r = await api.post<{ added: number; deduped: number }>('/demo/seed')
+      toast('success', `示例岗位：新增 ${r.added} 条，重复跳过 ${r.deduped} 条`)
+      load()
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  const clearDemo = async () => {
+    setConfirmDemoClear(false)
+    setErr('')
+    try {
+      const r = await api.post<{ deleted: number; kept: number }>('/demo/clear')
+      toast('info', `已删除 ${r.deleted} 条示例岗位${r.kept ? `（${r.kept} 条因已有投递记录保留）` : ''}`)
+      load()
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  const importJsonResume = async (file: File) => {
+    setErr('')
+    try {
+      const target = profiles[0]
+      if (!target) {
+        setErr('还没有画像——先到「新手向导」或「我的画像」建档，再导入 JSON Resume')
+        return
+      }
+      const text = await file.text()
+      const data = JSON.parse(text) as Record<string, unknown>
+      const counts = await api.post<Record<string, number>>(
+        `/profiles/${target.id}/import/json-resume`, data,
+      )
+      const total = Object.values(counts).reduce((a, b) => a + b, 0)
+      toast('success', total
+        ? `已导入到「${target.display_name}」：${Object.entries(counts).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${v}`).join('、')}`
+        : '没有新内容导入（同名实体已存在，导入幂等）')
+    } catch (e) {
+      setErr(`JSON Resume 导入失败：${(e as Error).message}`)
+    } finally {
+      if (jsonResumeRef.current) jsonResumeRef.current.value = ''
+    }
+  }
+
   return (
     <div>
       <h1>设置与隐私</h1>
@@ -178,6 +232,40 @@ export default function SettingsPage() {
         )}
         <p className="hint" style={{ marginTop: 8 }}>
           本地模式下以上全部显示「不会发送任何数据」。每次调用 AI 前界面会再次展示对应披露。
+        </p>
+      </div>
+
+      <h2>新手与示例数据</h2>
+      <div className="card">
+        <div className="row" style={{ flexWrap: 'wrap', marginTop: 0 }}>
+          <Link className="btn" to="/welcome">↻ 重新运行新手向导</Link>
+          <button className="btn" onClick={seedDemo}>
+            导入示例岗位{demo && demo.demo_jobs > 0 ? `（已有 ${demo.demo_jobs} 条）` : ''}
+          </button>
+          <button
+            className="btn"
+            onClick={() => setConfirmDemoClear(true)}
+            disabled={!demo?.demo_jobs}
+          >
+            清除示例岗位
+          </button>
+          <button className="btn" onClick={() => jsonResumeRef.current?.click()}>
+            导入 JSON Resume 文件
+          </button>
+          <input
+            ref={jsonResumeRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) importJsonResume(f)
+            }}
+          />
+        </div>
+        <p className="hint" style={{ marginBottom: 0 }}>
+          示例岗位为虚构雇主的演示数据，不影响你自己的岗位与投递；清除时只删未被投递引用的示例岗位。
+          向导会带新用户走「上传简历 → 核对 → 定方向」三步。
         </p>
       </div>
 
@@ -254,6 +342,16 @@ export default function SettingsPage() {
         danger
         onCancel={() => setConfirmRestore(null)}
         onConfirm={() => confirmRestore && uploadRestore(confirmRestore)}
+      />
+
+      <ConfirmDialog
+        open={confirmDemoClear}
+        title="清除全部示例岗位？"
+        body={`将删除 ${demo?.demo_jobs ?? 0} 条示例岗位（已产生投递记录的会保留）。你自己的岗位与投递不受影响。`}
+        confirmText="清除"
+        danger
+        onCancel={() => setConfirmDemoClear(false)}
+        onConfirm={clearDemo}
       />
 
       <h2>数据导出（随时带走）</h2>

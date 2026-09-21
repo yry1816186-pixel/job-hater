@@ -46,6 +46,7 @@ EGRESS_DISCLOSURES: dict[str, str] = {
     "interview_mock": "发送：面试官角色设定 + 对话历史（含你在模拟中的回答）",
     "interview_review": "发送：模拟面试完整转录文本",
     "fact_extraction": "发送：你导入的原始文档全文（用于提取候选事实）",
+    "resume_parse": "发送：你上传/粘贴的简历全文（仅用于结构化解析）",
 }
 
 
@@ -316,6 +317,7 @@ class AIService:
             "interview_mock": "模拟面试",
             "interview_review": "面试复盘",
             "fact_extraction": "文档事实提取",
+            "resume_parse": "简历 AI 精解析",
         }
         return [
             {

@@ -44,9 +44,20 @@ class ProfileIn(BaseModel):
 
 
 class ProfilePatchIn(BaseModel):
+    display_name: str | None = None
     headline: str | None = None
+    summary: str | None = None
     phone: str | None = None
     email: str | None = None
+
+
+class ResumeTextInput(BaseModel):
+    text: str
+
+
+class ResumeAIParseIn(BaseModel):
+    text: str
+    ack_egress: bool = False
 
 
 class EducationIn(BaseModel):
@@ -390,10 +401,13 @@ def register_routes(app: FastAPI) -> None:
     def patch_profile(profile_id: str, body: ProfilePatchIn, con=Depends(get_con)):
         try:
             return ProfileService(con).update_profile(
-                profile_id, headline=body.headline, phone=body.phone, email=body.email
+                profile_id, display_name=body.display_name, headline=body.headline,
+                summary=body.summary, phone=body.phone, email=body.email,
             ).model_dump()
         except KeyError:
             raise HTTPException(404, "profile 不存在") from None
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
 
     @app.post("/api/profiles/{profile_id}/educations")
     def add_education(profile_id: str, body: EducationIn, con=Depends(get_con)):
@@ -428,6 +442,30 @@ def register_routes(app: FastAPI) -> None:
         try:
             ProfileService(con).delete_skill(profile_id, skill_id)
             return {"deleted": skill_id}
+        except Exception as e:
+            raise _err(e) from e
+
+    @app.delete("/api/profiles/{profile_id}/educations/{education_id}")
+    def delete_education(profile_id: str, education_id: str, con=Depends(get_con)):
+        try:
+            ProfileService(con).delete_education(profile_id, education_id)
+            return {"deleted": education_id}
+        except Exception as e:
+            raise _err(e) from e
+
+    @app.delete("/api/profiles/{profile_id}/experiences/{experience_id}")
+    def delete_experience(profile_id: str, experience_id: str, con=Depends(get_con)):
+        try:
+            ProfileService(con).delete_experience(profile_id, experience_id)
+            return {"deleted": experience_id}
+        except Exception as e:
+            raise _err(e) from e
+
+    @app.delete("/api/profiles/{profile_id}/projects/{project_id}")
+    def delete_project(profile_id: str, project_id: str, con=Depends(get_con)):
+        try:
+            ProfileService(con).delete_project(profile_id, project_id)
+            return {"deleted": project_id}
         except Exception as e:
             raise _err(e) from e
 
@@ -935,6 +973,65 @@ def register_routes(app: FastAPI) -> None:
             raise HTTPException(422, str(e)) from e
         except KeyError as e:
             raise _err(e) from e
+
+    # ---------- 简历导入（冷启动主链） ----------
+
+    @app.post("/api/onboarding/parse-resume")
+    async def parse_resume_file(file: UploadFile, con=Depends(get_con)):
+        """上传简历文件（pdf/docx/txt/md/json）→ 结构化草稿。不落库——
+        草稿必须经用户核对编辑，再走 POST /api/profiles + import/json-resume 落库。"""
+        from jobhater.services.resume_import import ResumeImportError, ResumeImportService
+
+        data = await file.read()
+        try:
+            return ResumeImportService(con).parse_file(file.filename or "", data)
+        except ResumeImportError as e:
+            raise HTTPException(422, str(e)) from e
+
+    @app.post("/api/onboarding/parse-resume-text")
+    def parse_resume_text(body: ResumeTextInput, con=Depends(get_con)):
+        """粘贴简历文本 → 结构化草稿（与文件上传同一解析器，同样不落库）。"""
+        from jobhater.services.resume_import import ResumeImportService
+
+        if not body.text.strip():
+            raise HTTPException(422, "简历文本不能为空")
+        return ResumeImportService(con).parse_paste(body.text)
+
+    @app.post("/api/onboarding/ai-parse")
+    def ai_parse_resume(body: ResumeAIParseIn, con=Depends(get_con)):
+        """AI 精解析（远程 opt-in，428 语义同 /api/ai/complete）：
+        本地模式 executed=False；结果同样只是草稿，需用户核对。"""
+        from jobhater.services.ai import EgressNotAcknowledged
+        from jobhater.services.resume_import import ResumeImportError, ResumeImportService
+
+        if not body.text.strip():
+            raise HTTPException(422, "简历文本不能为空")
+        try:
+            return ResumeImportService(con).ai_parse(body.text, ack_egress=body.ack_egress)
+        except EgressNotAcknowledged as e:
+            raise HTTPException(428, detail={"disclosure": str(e), "task": "resume_parse"}) from e
+        except ResumeImportError as e:
+            raise HTTPException(422, str(e)) from e
+
+    # ---------- 示例数据 ----------
+
+    @app.get("/api/demo/status")
+    def demo_status(con=Depends(get_con)):
+        from jobhater.services.demo import DemoService
+
+        return DemoService(con).status()
+
+    @app.post("/api/demo/seed")
+    def demo_seed(con=Depends(get_con)):
+        from jobhater.services.demo import DemoService
+
+        return DemoService(con).seed()
+
+    @app.post("/api/demo/clear")
+    def demo_clear(con=Depends(get_con)):
+        from jobhater.services.demo import DemoService
+
+        return DemoService(con).clear()
 
     @app.get("/api/resume-versions/{version_id}/diff")
     def diff_versions(version_id: str, against: str, con=Depends(get_con)):

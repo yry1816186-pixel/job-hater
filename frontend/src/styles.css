@@ -407,3 +407,31 @@ table.data td { border-bottom: 1px solid var(--line); padding: 8px 10px; vertica
 .kw-chip.hard.miss { border-color: #c0392b; color: #c0392b; }
 .kw-chip.hit { border-color: #2e7d32; color: #2e7d32; }
 .kw-evidence { font-size: 12px; color: var(--muted, #777); margin-top: 3px; }
+
+/* ===== 新手向导 ===== */
+.wizard { max-width: 860px; }
+.wizard-steps { display: flex; gap: 8px; list-style: none; padding: 0; margin: 14px 0 18px; flex-wrap: wrap; }
+.wizard-steps li { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--muted, #888);
+  padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line, #e4e0d8); background: var(--panel, #faf8f4); }
+.wizard-steps li.now { color: var(--ink, #222); border-color: var(--accent, #8a5a2b); font-weight: 600; }
+.wizard-steps li.done { color: #2e7d32; border-color: #2e7d3255; }
+.wizard-steps .dot { display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%; background: var(--line, #ddd); font-size: 12px; color: #fff; }
+.wizard-steps li.now .dot { background: var(--accent, #8a5a2b); }
+.wizard-steps li.done .dot { background: #2e7d32; }
+
+.dropzone { border: 2px dashed var(--line, #c9c2b4); border-radius: 12px; padding: 38px 20px;
+  text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+.dropzone:hover, .dropzone.over { border-color: var(--accent, #8a5a2b); background: var(--panel, #faf8f4); }
+.dropzone.over { border-style: solid; }
+.dropzone-icon { font-size: 34px; margin-bottom: 6px; }
+
+.warn-box { border: 1px solid #d8b04a88; background: #fdf6e3; color: #6b5410;
+  border-radius: 8px; padding: 10px 14px; font-size: 13.5px; }
+[data-theme='dark'] .warn-box { background: #3a3113; color: #e6d78a; border-color: #8a742a; }
+
+.draft-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.draft-block { border: 1px solid var(--line, #e4e0d8); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.check-row { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-top: 12px; cursor: pointer; }
+.confirm-card { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(480px, 92vw); z-index: 99; box-shadow: 0 12px 40px rgba(0,0,0,.25); }

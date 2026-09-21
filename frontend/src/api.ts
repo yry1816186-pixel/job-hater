@@ -35,6 +35,12 @@ export const api = {
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  /** multipart 文件上传（headers 置 undefined 覆盖默认 JSON 头，让浏览器自动设 boundary） */
+  upload: <T>(path: string, file: File) => {
+    const fd = new FormData()
+    fd.append('file', file, file.name)
+    return request<T>(path, { method: 'POST', body: fd, headers: undefined })
+  },
 }
 
 export function qs(params: Record<string, string | number | boolean | undefined>): string {

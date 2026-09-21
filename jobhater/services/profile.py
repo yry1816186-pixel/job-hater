@@ -74,16 +74,23 @@ class ProfileService:
         return row_to_model(CandidateProfile, row, {}) if row else None
 
     def update_profile(
-        self, profile_id: str, *, headline: str | None = None,
+        self, profile_id: str, *, display_name: str | None = None,
+        headline: str | None = None, summary: str | None = None,
         phone: str | None = None, email: str | None = None,
     ) -> CandidateProfile:
-        """部分更新可变字段（headline/phone/email）；姓名是画像身份，不在此改动。
-        传 None 的字段保持原值——清空联系方式请传空串。"""
+        """部分更新可变字段。传 None 的字段保持原值——清空请传空串。
+        display_name 允许显式改名（纠错入口，禁止传空）；headline/summary/phone/email
+        随时可改。"""
         current = self.get_profile(profile_id)
         if current is None:
             raise KeyError(f"画像不存在: {profile_id}")
+        if display_name is not None and not display_name.strip():
+            raise ValueError("display_name 不能为空——画像姓名是必填身份字段")
         updates = {
-            k: v for k, v in {"headline": headline, "phone": phone, "email": email}.items()
+            k: v for k, v in {
+                "display_name": display_name, "headline": headline,
+                "summary": summary, "phone": phone, "email": email,
+            }.items()
             if v is not None
         }
         if updates:
@@ -251,6 +258,31 @@ class ProfileService:
             )
             if cur.rowcount == 0:
                 raise KeyError(f"技能不存在: {skill_id}")
+
+    def delete_education(self, profile_id: str, education_id: str) -> None:
+        """录错纠偏入口：删除单条学历。"""
+        with transaction(self.con):
+            cur = self.con.execute(
+                "DELETE FROM educations WHERE profile_id=? AND id=?", (profile_id, education_id)
+            )
+            if cur.rowcount == 0:
+                raise KeyError(f"学历不存在: {education_id}")
+
+    def delete_experience(self, profile_id: str, experience_id: str) -> None:
+        with transaction(self.con):
+            cur = self.con.execute(
+                "DELETE FROM experiences WHERE profile_id=? AND id=?", (profile_id, experience_id)
+            )
+            if cur.rowcount == 0:
+                raise KeyError(f"经历不存在: {experience_id}")
+
+    def delete_project(self, profile_id: str, project_id: str) -> None:
+        with transaction(self.con):
+            cur = self.con.execute(
+                "DELETE FROM projects WHERE profile_id=? AND id=?", (profile_id, project_id)
+            )
+            if cur.rowcount == 0:
+                raise KeyError(f"项目不存在: {project_id}")
 
     # ---------- 求职偏好 ----------
 
