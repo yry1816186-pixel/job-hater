@@ -1,0 +1,34 @@
+{
+  "mission": "job-hater v2.1.0 前沿机会扫描记录（停止钩子要求的 canonical frontier record）",
+  "generated_at": "2026-09-21T02:05:00Z",
+  "head_at_sweep": "245b093",
+  "sweep_method": "独立 frontier-scout 子 agent（read-only）7 维度扫描：科学工程/架构/性能/产品/安全/OSS/可复现性；读了 README/COMPLETION_REPORT/PERFORMANCE/SECURITY/pyproject/ci.yml/compose/services结构/tests清单/matching+materials 源码",
+  "candidates": [
+    {"id": "F1", "opportunity": "匹配质量黄金评测集（50-200条 persona×JD 标注对，挂 engine_version，pytest 常驻）", "value": "高", "cost": "中", "triage": "next_iteration", "reason": "全项目唯一不可证伪点——没有标注集，同义组/权重/硬域词演进全凭『看起来对』。属评测基建新范围，非本目标能力缺口"},
+    {"id": "F2", "opportunity": "rank_jobs 批量持久化（逐岗独立事务→单事务 executemany）", "value": "中高", "cost": "低", "triage": "DONE", "reason": "PERFORMANCE.md 点名的免费午餐——本会话已落地，N=3000 实测 431→514 jobs/s (+19%)"},
+    {"id": "F3", "opportunity": "docker-compose 端口根治（默认 127.0.0.1 绑定）", "value": "中高", "cost": "极低", "triage": "DONE", "reason": "无认证 API 的暴露面默认收口——本会话已改 compose 并同步 SECURITY.md"},
+    {"id": "F4", "opportunity": "匹配质量门禁进 CI（F1 落地后）+ benchmark 金丝雀", "value": "中高", "cost": "低", "triage": "next_iteration", "reason": "依赖 F1；吞吐类断言 ±10% 噪声不可硬卡（PERFORMANCE.md 已记录）"},
+    {"id": "F5", "opportunity": "mcp SDK 2.x 迁移（FastMCP→MCPServer）", "value": "中", "cost": "低", "triage": "next_iteration", "reason": "15 工具全是薄封装可快速迁移；当前钉 <2 不阻塞任何用户"},
+    {"id": "F6", "opportunity": "JSON Resume 标准导入/导出互操作", "value": "中", "cost": "低中", "triage": "next_iteration", "reason": "数据可携带性主张的自然延伸；价值排序系推断（无用户数据佐证，scout 已诚实标注）"},
+    {"id": "F7", "opportunity": "ingest 去重索引增量化", "value": "低中", "cost": "低中", "triage": "later", "reason": "~50k+ 才有感，当前真实库 9.7k"},
+    {"id": "F8", "opportunity": "信源适配器扩展+插件契约文档化", "value": "中", "cost": "中高", "triage": "later", "reason": "粘贴主链永不失效，盲扩是低价值扩张；先文档化契约让社区按需贡献"},
+    {"id": "F9", "opportunity": "ICS 日历导出（deadline/面试提醒）", "value": "中", "cost": "低", "triage": "later", "reason": "字段齐备成本低，但优先级应等真实用户反馈背书"},
+    {"id": "F10", "opportunity": "SQLite→Postgres/更强存储", "value": "无", "cost": "高", "triage": "reject", "reason": "摧毁本地优先价值主张，无实测证据支持需要"},
+    {"id": "F11", "opportunity": "数据目录自建加密层", "value": "低", "cost": "高", "triage": "reject", "reason": "威胁模型已如实声明边界，系统级方案已指路——自建是假性安全"},
+    {"id": "F12", "opportunity": "AI 深度功能扩张", "value": "低", "cost": "中", "triage": "reject_current_stage", "reason": "本地确定性材料层已覆盖主链；F1 评测集建立前任何『AI 改进』无法验证效果"}
+  ],
+  "marginal_value_gate": {
+    "decision": "SATISFIED_FOR_THIS_MISSION",
+    "rationale": "本目标=能力补齐+UX打磨+收尾发布。扫描出的 12 项中：2 项低成本高价值项（F2/F3）已在停止前落地（边际成本≈30分钟，价值=文档点名的性能免费午餐+安全暴露面根治）；6 项属下一迭代的评测基建/生态扩张（F1/F4/F5/F6）与触发条件项（F7/F8/F9），超出本目标范围且 scout 判定不阻塞当前声明；4 项明确 reject 有记录理由。继续做 F1（黄金评测集）边际价值为正但属新范围（评测基建），且其缺失已在 COMPLETION_REPORT/ACCEPTANCE_STATUS 如实披露——停止点诚实。",
+    "residual_risk": "匹配引擎质量演进（同义组/权重调整）在下迭代前无可证伪基准——已列为 F1 next_iteration 首位"
+  },
+  "independent_audit": {
+    "verdict": "SURVIVES",
+    "method": "独立对抗审计子 agent（read-only，拒绝导向）：重跑 pytest(82绿复核+精确清点82个test函数)/ruff；gh 核 CI run 35551889161 success@fd9d2de + 245b093 的 35552250799 success；抽读 materials.py(634行5生成器真实现)/test_adversarial(19用例50断言)/benchmark.py(597行)；grep 验证 65 路由/12命令/15工具/ai complete 门；验证 ResumePage 表单化+ui.tsx 存在+tsc 零错误；honestly_not_done 逐项对代码核实；反例搜索（TODO/stub/隐藏过滤/deselect 全零命中）",
+    "caveats_found_and_disposition": [
+      "test_adversarial.py 过时 xfail 注释（docstring+L327）→ 本会话已更新",
+      ".control/ 未跟踪 → 本文件随该目录一并提交",
+      "Playwright 走查不可重放 → 其行使的每条路由/服务/前端文件已被逐项落地核实（审计员结论）"
+    ]
+  }
+}

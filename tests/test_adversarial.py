@@ -7,10 +7,8 @@
 - 状态机诚实语义（applied_confirmed 用户确认门、同岗唯一约束的并发竞争）；
 - Offer 数值边界、SQLite/FTS 注入面。
 
-已知 bug 的处理方式：发现的真实缺陷**不在服务代码里修**（主 agent 决策），
-而是在此用 ``xfail(strict=True)`` 固化**期望行为**——当前失败（套件仍绿，计 xfailed），
-服务修复后会 XPASS 并报错，提醒把标记摘掉让测试转正。对应编号见 SECURITY.md
-「已知残留风险」表。
+历史：本套件首轮审计发现的 5 项真实缺陷曾以 xfail(strict) 固化期望行为，
+后已全部根因修复并转正为常规断言（见 SECURITY.md「已修复」表）。
 """
 from __future__ import annotations
 
@@ -323,8 +321,8 @@ def test_offer_negative_salary_rejected(client):
 
 
 def test_search_hostile_terms_stay_parameterized(client):
-    """搜索词含单引号/分号/SQL 关键字：参数化 + FTS 逐 token 引号包裹，正常返回空集；
-    库不被破坏。半角双引号是已知缺陷（见下一条 xfail）。"""
+    """搜索词含单引号/分号/SQL 关键字：参数化 + FTS 逐 token 引号成对转义，正常返回空集；
+    库不被破坏。半角双引号转义由独立用例锁定。"""
     c = client
     seed = c.post("/api/import/paste", json={
         "text": "职位：注入面测试工程师\n公司：参数化公司\n职责：什么都不做", "save": True,

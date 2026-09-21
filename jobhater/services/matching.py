@@ -530,6 +530,12 @@ def combine(
 
 # ========== 服务封装（持久化 + 批量） ==========
 
+_MATCH_INSERT_SQL = """INSERT INTO match_results (
+     id, job_id, profile_id, preset_id, engine_version, eligible,
+     gate_reasons_json, relevance_score, rank_score, verdict,
+     dims_json, evidence_json, needs_review
+   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"""
+
 
 class MatchService:
     def __init__(self, con: sqlite3.Connection) -> None:
@@ -569,25 +575,28 @@ class MatchService:
             needs_review=needs_review,
         )
 
+    def _row_for(self, outcome: MatchOutcome) -> tuple:
+        return (
+            f"mt_{outcome.job_id}_{outcome.profile_id}_{dt.datetime.now(dt.timezone.utc).strftime('%H%M%S%f')}",
+            outcome.job_id, outcome.profile_id, outcome.preset_id,
+            outcome.engine_version, outcome.eligible,
+            json.dumps([g.model_dump() for g in outcome.gate_reasons], ensure_ascii=False),
+            outcome.relevance_score, outcome.rank_score, outcome.verdict,
+            json.dumps({k: v.model_dump() for k, v in outcome.dims.items()}, ensure_ascii=False),
+            json.dumps(outcome.evidence, ensure_ascii=False),
+            outcome.needs_review,
+        )
+
     def persist(self, outcome: MatchOutcome) -> None:
         with transaction(self.con):
-            self.con.execute(
-                """INSERT INTO match_results (
-                     id, job_id, profile_id, preset_id, engine_version, eligible,
-                     gate_reasons_json, relevance_score, rank_score, verdict,
-                     dims_json, evidence_json, needs_review
-                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    f"mt_{outcome.job_id}_{outcome.profile_id}_{dt.datetime.now(dt.timezone.utc).strftime('%H%M%S%f')}",
-                    outcome.job_id, outcome.profile_id, outcome.preset_id,
-                    outcome.engine_version, outcome.eligible,
-                    json.dumps([g.model_dump() for g in outcome.gate_reasons], ensure_ascii=False),
-                    outcome.relevance_score, outcome.rank_score, outcome.verdict,
-                    json.dumps({k: v.model_dump() for k, v in outcome.dims.items()}, ensure_ascii=False),
-                    json.dumps(outcome.evidence, ensure_ascii=False),
-                    outcome.needs_review,
-                ),
-            )
+            self.con.execute(_MATCH_INSERT_SQL, self._row_for(outcome))
+
+    def persist_many(self, outcomes: list[MatchOutcome]) -> None:
+        """批量持久化：单事务 executemany（万级岗位从逐岗独立事务合并为一次提交）。"""
+        if not outcomes:
+            return
+        with transaction(self.con):
+            self.con.executemany(_MATCH_INSERT_SQL, [self._row_for(o) for o in outcomes])
 
     def rank_jobs(
         self,
@@ -618,13 +627,15 @@ class MatchService:
             r["id"]: r["rowid"]
             for r in self.con.execute("SELECT id, rowid FROM job_postings").fetchall()
         }
-        outcomes = []
-        for job in jobs:
-            rel = bm25.get(rowid_by_id.get(job.id, -1))
-            fb = fb_by_employer.get(job.employer_name)
-            outcome = self.evaluate(job, profile_view, preset, relevance=rel, feedback_sum=fb)
-            self.persist(outcome)
-            outcomes.append(outcome)
+        outcomes = [
+            self.evaluate(
+                job, profile_view, preset,
+                relevance=bm25.get(rowid_by_id.get(job.id, -1)),
+                feedback_sum=fb_by_employer.get(job.employer_name),
+            )
+            for job in jobs
+        ]
+        self.persist_many(outcomes)
         outcomes.sort(key=lambda o: (not o.eligible, -(o.rank_score or 0)))
         return outcomes
 

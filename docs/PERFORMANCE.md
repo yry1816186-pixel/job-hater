@@ -35,7 +35,8 @@ python scripts/benchmark.py --db D:/tmp/bench.db   # 保留数据库供离线检
 
 - **测稳态不测冷启动**：jieba 词典加载（首次约 1 s）与每查询的首次执行计划预热均不计入计时；
 - `search()` 计时覆盖完整链路：SQL（FTS MATCH + 结构化过滤 + ORDER BY rank LIMIT 50）+ 行到模型的反序列化；
-- `rank_jobs` 走生产路径，**包含**逐岗位 `persist()` 单事务写 `match_results`——这是当前实现的真实成本；
+- `rank_jobs` 走生产路径，**包含**写 `match_results`（v2.1 后为单事务 `executemany` 批量持久化，
+  此前为逐岗位独立事务——批量 化后在 N=3000/seed=11 实测匹配吞吐 431→514 jobs/s，+19%）；
 - 合成数据由 `--seed`（默认 42）驱动，`random.Random` 独立实例，同种子完全可复现。
 
 ### 性能预算（脚本内置断言，超限非零退出）

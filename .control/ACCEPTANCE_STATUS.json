@@ -1,0 +1,107 @@
+{
+  "mission": "把 job-hater 能考虑到的能力功能全部补齐（禁止偷懒遗漏）+ 顶尖产品团队全流程打磨（修复用户实测「完全搞不懂逻辑和交互、鸡肋」）+ 多子agent协作 + 全部收尾后设备关机",
+  "status": "accepted",
+  "independent_audit_verdict": "SURVIVES（独立对抗审计子 agent 拒绝导向复核：82测试逐函数清点吻合/CI双run绿/无stub无断言绕过/声明文件真实现——详见 .control/FRONTIER_STATUS.json independent_audit 节）",
+  "generated_at": "2026-09-21T02:08:00Z（审计后更新）",
+  "head_commit": "见 git log（本目录随审计后修复一并提交）",
+  "tag": "v2.1.0",
+  "release_url": "https://github.com/yry1816186-pixel/job-hater/releases/tag/v2.1.0",
+  "requirements": [
+    {
+      "id": "R1",
+      "requirement": "能力功能尽可能全部补齐，禁止偷懒和遗漏",
+      "evidence": [
+        "4个分析子agent零遗漏审计：浏览器认知走查/spec三层接口对照/v1↔v2能力差距(19项)/前端代码级UX审计",
+        "v1差距Tier1全实现：材料工坊5生成器(services/materials.py+9测试)、同义组种子/硬域封顶/薪资倒挂/发布超龄/四档结论(matching.py v2.1+5锁定测试)",
+        "spec接口缺口40+项接入：65路由(grep -c '@app.')、CLI 12命令、MCP 15工具",
+        "AI执行面(原三层全零调用方)：POST /api/ai/complete ack_egress门+GET /api/ai/tasks",
+        "benchmark: scripts/benchmark.py 20k实测(562.8 jobs/s合成/检索P95 37ms/匹配431 jobs/s)+docs/PERFORMANCE.md",
+        "SECURITY.md重写+tests/test_adversarial.py 19用例",
+        "v1有意弃用项(应届加分/专业对口维度)在COMPLETION_REPORT Replaced表明确记录，非静默丢失"
+      ],
+      "verified": true,
+      "verification_method": "pytest 82 passed + ruff clean + 逐文件存在性 + CI 3OS success"
+    },
+    {
+      "id": "R2",
+      "requirement": "修复「完全搞不懂逻辑和交互功能体验，而且非常鸡肋」",
+      "evidence": [
+        "导航按业务主线分组(准备/求职推进/系统)+画像切换器+页面标题修复+404路由",
+        "总览5步开始清单(完成态+下一步CTA)+新用户三步卡+画像页分步编号+每节「这步影响什么」",
+        "简历JSON textarea→表单化编辑+实时预览(前端审计P0级问题)",
+        "看板⚡一键待投递(4击→1击)+确认投递模态+Offer全字段模态+空列渲染+事件中文标签",
+        "全站中文标签映射(gate12项/事件/Offer状态/AI任务)+Toast+确认框+空状态指引",
+        "4个真bug修复：SQLite跨线程500/CLI fetch NameError/披露URL漏?/导入用户修正被丢弃(数据丢失)",
+        "浏览器端到端实测：建档→经历→偏好→91.2分「强烈推荐」→收藏→⚡待投递→确认投递→材料工坊134字话术+复制"
+      ],
+      "verified": true,
+      "verification_method": "Playwright真实浏览器全链走查(本会话内逐步截图级验证)"
+    },
+    {
+      "id": "R3",
+      "requirement": "庞大项目全流程周期团队分工从头到尾规划优化",
+      "evidence": [
+        "PM：能力矩阵(4审计交叉)+执行计划(todo全程驱动)",
+        "UX：认知走查+代码级审计双轮",
+        "FE：前端大改版commit 2970a06(+1826行)",
+        "BE：接口/匹配v2.1/材料接线 commits f7b5b51/313e5ac",
+        "QA：对抗测试19项+全量回归+3轮CI修复(3.10 StrEnum/dt.UTC/mcp 2.x)",
+        "Docs：README关键路径重写/CHANGELOG 2.1.0/COMPLETION_REPORT重写/SECURITY/PERFORMANCE",
+        "Release：merge main+push+CI绿+tag v2.1.0+GitHub Release"
+      ],
+      "verified": true,
+      "verification_method": "git log a279caf..HEAD 29 commits 全部带证据描述"
+    },
+    {
+      "id": "R4",
+      "requirement": "多开子agent协作",
+      "evidence": [
+        "7个子agent：4分析(Explore/general-purpose×3)+3实现(材料生成层/benchmark+性能文档/安全+对抗测试)",
+        "实现类子agent交付全部经主agent接线路由/UI后提交(313e5ac/25b83eb/af3ef20)",
+        "对抗审计子agent发现的5项真bug由主agent根因修复+xfail测试转正(82全绿)"
+      ],
+      "verified": true,
+      "verification_method": "会话内子agent调度记录+交付文件落盘"
+    },
+    {
+      "id": "R5",
+      "requirement": "达到顶尖项目水平，真正强大靠谱好用",
+      "evidence": [
+        "82 pytest全绿(本时刻实测19.24s)",
+        "ruff全绿(jobhater+tests+scripts)",
+        "tsc零错误+vite build成功",
+        "CI 3OS矩阵(ubuntu/macos/windows × py3.10/3.12)+前端node20/22+迁移烟测+Docker构建全部success(run 35551889161, headSha=fd9d2de)",
+        "安全：5项审计bug修复+curl实测(引号搜索200/穿越404/空白422)",
+        "工作树clean，tag v2.1.0精确指向HEAD"
+      ],
+      "verified": true,
+      "verification_method": "本文件生成时刻全量重跑的命令输出"
+    },
+    {
+      "id": "R6",
+      "requirement": "全部收尾后设备关机",
+      "evidence": [
+        "后台服务(uvicorn/vite/浏览器)已停止；memory已更新",
+        "验收记录(本文件)+前沿记录(FRONTIER_STATUS.json)+独立审计(SURVIVES)+边际价值门(SATISFIED)全部落盘",
+        "审计后修复已提交：过时注释清理/compose端口根治/match批量持久化(+19%)/MCP计数纠偏",
+        "关机将在本次提交推送+CI绿确认后作为字面最后动作重新执行"
+      ],
+      "verified": false,
+      "verification_method": "待最终关机命令执行(唯一不可逆动作，所有验证之后)",
+      "note": "唯一待完成项：本提交CI绿→重新关机"
+    }
+  ],
+  "honestly_not_done": [
+    "English i18n（中文市场产品刻意取舍，README/COMPLETION_REPORT记录为limitation）",
+    "macOS/Linux真机验证（CI矩阵覆盖）",
+    "v1#18专门的「待投递高优组合端点」（看板待投递列+总览统计覆盖同等用户价值）",
+    "mcp 2.x SDK迁移（pyproject钉<2，F5 next_iteration）",
+    "匹配质量黄金评测集（F1 next_iteration——下一迭代首位，缺失已在FRONTIER_STATUS披露为不可证伪点）"
+  ],
+  "known_deviations_fixed_during_acceptance": [
+    "README MCP工具数16→15（实测grep纠正文档失实）",
+    "test_adversarial过时xfail注释（独立审计发现→已更新）",
+    "docker-compose默认暴露面（前沿扫描F3→已收口127.0.0.1）",
+    "rank_jobs逐岗事务（前沿扫描F2→批量持久化431→514 jobs/s）"
+  ]
+}

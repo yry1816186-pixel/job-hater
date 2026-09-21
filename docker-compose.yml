@@ -2,7 +2,9 @@ services:
   job-hater:
     build: .
     ports:
-      - "8787:8787"
+      # 默认只绑回环（API 无认证，见 SECURITY.md 部署注意）；
+      # 需要局域网访问时自行改为 "8787:8787" 并加防火墙/反代认证
+      - "127.0.0.1:8787:8787"
     volumes:
       - jobhater-data:/data
     restart: unless-stopped
