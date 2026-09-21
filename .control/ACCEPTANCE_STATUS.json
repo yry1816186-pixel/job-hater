@@ -1,65 +1,74 @@
 {
-  "mission": "把 job-hater 做成完整成熟的商业级体验产品：能力/体验/性能/功能/使用多样性/用户体验对齐并超越顶尖商业求职产品（Teal/Huntr/Jobscan/Simplify/CareerFlow），全量开发禁止剩余项，分歧选最强最优，齐平或超越顶尖商业水平才允许停下",
+  "mission": "把 job-hater 做成完整成熟的商业级体验产品：能力/体验/性能/功能/使用多样性/用户体验对齐并超越顶尖商业求职产品（Teal/Huntr/Jobscan/Simplify/CareerFlow），全量开发禁止剩余项，分歧选最强最优，齐平或超越顶尖商业水平才允许停下；任何用户从 GitHub 克隆即得完整产品体验（冷启动不依赖作者私有数据）",
   "status": "accepted",
-  "generated_at": "2026-09-21T07:05:00Z",
-  "head_commit": "e4fb98a",
-  "tag": "v3.0.0",
-  "release_url": "https://github.com/yry1816186-pixel/job-hater/releases/tag/v3.0.0",
+  "generated_at": "2026-09-21T16:35:00Z",
+  "head_commit": "ca4ff52",
+  "tag": "v3.1.0",
+  "release_url": "https://github.com/yry1816186-pixel/job-hater/releases/tag/v3.1.0",
   "requirements": [
     {
-      "id": "N1",
-      "requirement": "商业基准研究与差距矩阵（两轮竞品调研：Teal+Huntr 全景 / Jobscan+Simplify+CareerFlow+中国对位产品）",
+      "id": "C1",
+      "requirement": "简历文件导入链路（新用户手里最值钱的资产是现成简历——此前完全进不来）",
       "status": "pass",
       "evidence": [
-        "两份研究代理报告（20项商业及格线清单/用户抱怨清单/超越机会清单/ATS报告11要素规格/中国网申字段清单）",
-        "差距矩阵落盘 .zcode/EXECUTION_STATE.md：20项中18项已具备或本批次新建、1项天然成立（开源自费）、1项有意不做（自定义看板阶段，13态诚实状态机是深度非限制）"
+        "ca4ff52: resume_import.py 五格式抽取(pdf文本层/docx段落+表格/txt/md/json，扫描件fail closed给出替代路径) + 中英文启发式解析器(段识别/姓名/联系方式/学历含无'专业'后缀兜底/经历公司职位分离含全角空格/项目角色剥离/技能逐词动词剥离)",
+        "解析输出 JSON Resume 形状 → 落库复用 import_json_resume 单一信任边界：同名跳过幂等、导入无免检特权，核对前不落库",
+        "AI 精解析可选增强：resume_parse 任务入 EGRESS_DISCLOSURES，428 出境确认门，本地模式 executed=False 自动降级启发式（test_api_ai_parse_local_mode 验证）"
       ]
     },
     {
-      "id": "N2",
-      "requirement": "后端全量补齐：五张沉睡表激活+备份恢复+ATS报告引擎+标签+CSV+双模板+jobs since",
+      "id": "C2",
+      "requirement": "新手向导三步流程（上传/粘贴/手动 → 核对编辑 → 定方向），onboarding_done 死键激活",
       "status": "pass",
       "evidence": [
-        "c274b70: contacts/reminders(确定性建议+防轰炸)/settings/interview_kit(逐字稿+stats+自评+AI走428门)/stats(applied_at事实判据)/backup(三重校验) + 30路由 + 15测试",
-        "3c45789: ats_scan.py(关键词覆盖70+可解析性30+证据链+反堆砌+透明度声明)/0004标签迁移/CSV导出(RFC4180+BOM)/compact模板 + 8测试",
-        "e4fb98a: serialize→临时文件（Py3.10 CI 红转绿）"
+        "OnboardingPage.tsx：dropzone拖拽+点击上传、粘贴文本、手动建档三入口；步骤2全字段可编辑(增删改)+warnings橙条+AI精解析428确认弹窗；步骤3定方向/跳过建通用偏好(匹配不再因无偏好拒绝)+示例岗位勾选；完成写 settings.onboarding_done",
+        "Home无画像欢迎卡改向导主入口+示例按钮；ProfilePage顶部向导回流入口；Settings重跑向导入口"
       ]
     },
     {
-      "id": "N3",
-      "requirement": "前端全量补齐：看板拖拽/分析页/ATS面板/练习器/提醒面板/保存搜索/暗色/命令面板/设置中枢",
+      "id": "C3",
+      "requirement": "示例数据（零数据用户可先看系统形态）",
       "status": "pass",
       "evidence": [
-        "d551adf: ApplicationsPage重建1810行(10列Kanban原生拖拽=合法transition+批量+联系人CRM+练习器)、AnalyticsPage(漏斗/周柱/渠道/薪资分位样本不足灰显)、JobDetailPage+860行(ATS报告面板+AI复盘428流)、Ctrl+K命令面板、暗色模式验证 data-theme=dark bg=rgb(23,22,20)",
-        "浏览器E2E LIVE_VERIFIED: 拖拽 applied_confirmed→interviewing、建议→采纳→提醒闭环、ATS 94分报告(Java证据链/Redis从经历命中/K8s唯一硬缺口/反堆砌黄牌)、练习器逐字稿→统计→自评提交、命令面板搜索跳岗"
+        "demo.py: 8条虚构雇主岗位(后端/前端/算法/数据/测开/产品/实习/安全，多城市多批次)走 ingest 去重链，seed幂等(test_demo_seed_clear_roundtrip: 二次seed added=0 deduped=8)",
+        "clear 只删未被投递引用岗位(applications RESTRICT)，被引用保留并计数(test_demo_clear_keeps_applied_jobs: deleted=7 kept=1)"
       ]
     },
     {
-      "id": "N4",
-      "requirement": "浏览器扩展（JD抓取+网申autofill不代投）",
+      "id": "C4",
+      "requirement": "画像纠错能力（此前录错只能动数据库）",
       "status": "pass",
       "evidence": [
-        "02617dd: extension/ MV3(manifest/worker/content/popup/icons/README) 权限最小化(activeTab+scripting+storage) host仅127.0.0.1",
-        "内容脚本 LIVE_VERIFIED(真实注入fixture页): CAPTURE_JD 标题剥离+主内容区447字、FILL_FORM 7字段(下拉匹配'本科'/已填不覆盖/密码不碰/橙框高亮rgb(230,150,60))"
+        "profile.py: update_profile 支持 display_name(拒空)/summary；delete_education/experience/project 三删除端点+路由",
+        "ProfilePage: 基本信息与联系方式卡(姓名/手机/邮箱/简介统一保存)、学历/经历/项目行内✕删除、项目添加表单；PATCH/DELETE 端点测试 test_api_profile_patch_and_delete_children"
       ]
     },
     {
-      "id": "N5",
-      "requirement": "全量验证+发布：146测试/tsc/build/CI 11绿/tag+Release",
+      "id": "C5",
+      "requirement": "冷启动全旅程 E2E 实测（等价于任意新用户克隆后的体验）",
       "status": "pass",
       "evidence": [
-        "pytest 146 全绿(exit 0)、tsc -b 零错、vite build ✓",
-        "CI run 35570784054 success: 3OS×py3.10/3.12 + node20/22 + 迁移烟测 + 性能金丝雀 + 黄金评测门禁 + Docker 全✓",
-        "tag v3.0.0 + GitHub Release https://github.com/yry1816186-pixel/job-hater/releases/tag/v3.0.0"
+        "LIVE_VERIFIED 浏览器走查(throwaway数据目录+8791端口): 空库→Home欢迎卡→向导→拖拽上传md→解析(姓名/邮箱/手机/意向/学历/经历/项目/技能全对)→确认建档→方向(杭州上海/20K/2027)→示例8岗→总览五项清单全绿→匹配78.9推荐→主简历v1→ATS 92.4分(覆盖62.4/70+解析30/30,缺口Kafka如实报出)",
+        "附带修复: Home匹配前列引用预取外岗位误报'岗位已删除'(jobLookup查找表)，开始清单完成口径与展示对齐"
       ]
     },
     {
-      "id": "N6",
-      "requirement": "恢复并收殓兄弟会话两批中断工作（不丢弃用户/前会话工作）",
+      "id": "C6",
+      "requirement": "全量验证+发布",
       "status": "pass",
       "evidence": [
-        "7c90c05: 联系方式+BM25恒空修复+v1迁移硬化（116测试绿后提交）",
-        "c274b70+4fac6b1: 2.3.0真实数据批次完整收尾（版本/CHANGELOG/README/前端，tsc+build绿验证后提交）"
+        "ruff全绿、pytest 162全绿(新增16冷启动测试含程序化PDF夹具构造)、tsc零错、oxlint零警、vite build ✓",
+        "tag v3.1.0 + Release https://github.com/yry1816186-pixel/job-hater/releases/tag/v3.1.0",
+        "README快速开始重写: Docker首选(零工具链)+第一次使用3步向导旅程"
+      ]
+    },
+    {
+      "id": "S1",
+      "requirement": "兄弟会话并发写入处置（第三次）",
+      "status": "pass",
+      "evidence": [
+        "发现 jobhater/services/wechat/(detect.py+recruit.py,微信本地信源方向,写入时间与本批次并行)——按工作树保护规则未读取内容修改、未纳入提交、未删除，如实上报待其所属会话收尾",
+        "本批次提交 ca4ff52 显式列路径(git add 18文件)，wechat/ 与用户个人文件 秋招岗位清单_待过目.md 均不在提交内"
       ]
     }
   ]
