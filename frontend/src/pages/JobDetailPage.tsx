@@ -14,6 +14,201 @@ const DIM_LABELS: Record<string, string> = {
   feedback: '历史反馈',
 }
 
+interface InterviewQuestions {
+  sections: {
+    project_deep_dive: { question: string; basis?: string; note?: string }[]
+    technical_basics: { question: string; basis?: string; note?: string }[]
+    behavioral: { question: string; basis?: string; note?: string }[]
+    reverse_questions: { question: string; basis?: string; note?: string }[]
+  }
+  notes?: string[]
+}
+
+interface UpskillPlan {
+  integrity_note: string
+  gaps: { name: string; steps: string[]; milestone: string }[]
+  phases: Record<string, string[]>
+  notes?: string[]
+}
+
+/** 材料工坊：确定性生成（本地零AI依赖）——定制简历/求职信/打招呼/题库/提升计划 */
+function MaterialsWorkshop({ jobId }: { jobId: string }) {
+  const { activeId } = useProfiles()
+  const { toast } = useToast()
+  const [busy, setBusy] = useState('')
+  const [greeting, setGreeting] = useState<{ greeting: string; length: number } | null>(null)
+  const [coverLetter, setCoverLetter] = useState<{ content_md: string } | null>(null)
+  const [questions, setQuestions] = useState<InterviewQuestions | null>(null)
+  const [plan, setPlan] = useState<UpskillPlan | null>(null)
+  const [resumeInfo, setResumeInfo] = useState<{ version_id: string } | null>(null)
+
+  const run = async (kind: string, fn: () => Promise<void>) => {
+    if (!activeId) {
+      toast('info', '先在「我的画像」建档，材料才能基于你的真实经历生成')
+      return
+    }
+    setBusy(kind)
+    try {
+      await fn()
+    } catch (e) {
+      toast('error', (e as Error).message)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const genResume = () =>
+    run('resume', async () => {
+      const r = await api.post<{ version_id: string; relevance: Record<string, unknown> }>(
+        `/jobs/${jobId}/materials/resume`, { profile_id: activeId },
+      )
+      setResumeInfo(r)
+      toast('success', '岗位定制简历已生成（按 JD 相关度重排，只重排不编造）——去「简历」页查看')
+    })
+
+  const genCover = () =>
+    run('cover', async () => {
+      const r = await api.post<{ content_md: string }>(
+        `/jobs/${jobId}/materials/cover-letter`, { profile_id: activeId },
+      )
+      setCoverLetter(r)
+    })
+
+  const genGreeting = () =>
+    run('greet', async () => {
+      const r = await api.post<{ greeting: string; length: number }>(
+        `/jobs/${jobId}/materials/greeting`, { profile_id: activeId },
+      )
+      setGreeting(r)
+    })
+
+  const genQuestions = () =>
+    run('q', async () => {
+      const r = await api.get<InterviewQuestions>(
+        `/jobs/${jobId}/materials/interview-questions?profile_id=${activeId}`,
+      )
+      setQuestions(r)
+    })
+
+  const genPlan = () =>
+    run('plan', async () => {
+      const r = await api.get<UpskillPlan>(
+        `/jobs/${jobId}/materials/upskill-plan?profile_id=${activeId}`,
+      )
+      setPlan(r)
+    })
+
+  const copy = (text: string) => {
+    navigator.clipboard?.writeText(text).then(
+      () => toast('success', '已复制到剪贴板'),
+      () => toast('error', '复制失败，请手动选择文本'),
+    )
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 18 }}>
+      <h2 style={{ marginTop: 0 }}>材料工坊 <span className="tag">本地生成 · 不用 AI 也能用</span></h2>
+      <p className="hint" style={{ marginTop: 0 }}>
+        全部基于你画像里的真实条目生成：定制简历只重排不编造；求职信/话术只引用你真实做过的事。
+      </p>
+      <div className="row" style={{ flexWrap: 'wrap' }}>
+        <button className="btn primary" onClick={genResume} disabled={!!busy}>
+          {busy === 'resume' ? '生成中…' : '📄 定制简历（按 JD 重排）'}
+        </button>
+        <button className="btn" onClick={genCover} disabled={!!busy}>
+          {busy === 'cover' ? '生成中…' : '✉️ 求职信'}
+        </button>
+        <button className="btn" onClick={genGreeting} disabled={!!busy}>
+          {busy === 'greet' ? '生成中…' : '💬 打招呼话术'}
+        </button>
+        <button className="btn" onClick={genQuestions} disabled={!!busy}>
+          {busy === 'q' ? '生成中…' : '🎤 面试题库'}
+        </button>
+        <button className="btn" onClick={genPlan} disabled={!!busy}>
+          {busy === 'plan' ? '生成中…' : '📈 技能提升计划'}
+        </button>
+      </div>
+
+      {resumeInfo && (
+        <div className="subcard">
+          <b>✓ 定制简历已生成</b>{' '}
+          <Link className="btn small" to="/resume">去简历页查看/导出 →</Link>
+        </div>
+      )}
+      {greeting && (
+        <div className="subcard">
+          <b>打招呼话术（{greeting.length} 字）</b>
+          <p style={{ whiteSpace: 'pre-wrap', margin: '6px 0' }}>{greeting.greeting}</p>
+          <button className="btn small" onClick={() => copy(greeting.greeting)}>复制</button>
+        </div>
+      )}
+      {coverLetter && (
+        <div className="subcard">
+          <b>求职信</b>
+          <div style={{ whiteSpace: 'pre-wrap', maxHeight: 260, overflowY: 'auto', fontSize: 13.5 }}>
+            {coverLetter.content_md}
+          </div>
+          <button className="btn small" style={{ marginTop: 6 }} onClick={() => copy(coverLetter.content_md)}>
+            复制全文
+          </button>
+        </div>
+      )}
+      {questions && (
+        <div className="subcard">
+          <b>面试题库</b>
+          {questions.notes?.map((n, i) => <p key={i} className="hint">⚠ {n}</p>)}
+          {(
+            [
+              ['项目深挖', questions.sections.project_deep_dive],
+              ['技术基础', questions.sections.technical_basics],
+              ['行为面', questions.sections.behavioral],
+              ['建议反问', questions.sections.reverse_questions],
+            ] as const
+          ).map(([label, qs]) =>
+            qs?.length ? (
+              <div key={label}>
+                <b style={{ fontSize: 13 }}>{label}</b>
+                <ol style={{ margin: '4px 0 10px', paddingLeft: 20, fontSize: 13.5 }}>
+                  {qs.map((q, i) => (
+                    <li key={i}>{q.question}{q.note ? <span className="hint">（{q.note}）</span> : null}</li>
+                  ))}
+                </ol>
+              </div>
+            ) : null,
+          )}
+        </div>
+      )}
+      {plan && (
+        <div className="subcard">
+          <b>技能提升计划</b>
+          <p className="hint">{plan.integrity_note}</p>
+          {plan.gaps.length === 0 ? (
+            <p>没有发现技能缺口——按 JD 关键词与你的技能对照。</p>
+          ) : (
+            plan.gaps.map((g) => (
+              <div key={g.name}>
+                <b>{g.name}</b>
+                <ol style={{ margin: '2px 0 8px', paddingLeft: 20, fontSize: 13 }}>
+                  {g.steps.map((s, i) => <li key={i}>{s}</li>)}
+                </ol>
+                <p className="hint">里程碑：{g.milestone}</p>
+              </div>
+            ))
+          )}
+          {(Object.entries(plan.phases) as [string, string[]][]).map(([phase, items]) => (
+            <div key={phase}>
+              <b style={{ fontSize: 13 }}>{phase} 冲刺</b>
+              <ul style={{ margin: '2px 0 8px', paddingLeft: 20, fontSize: 13 }}>
+                {items.map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** 岗位详情：结论 + 依据 + 不确定性，透明到每一维；无匹配时解释为什么 */
 export default function JobDetailPage() {
   const { jobId = '' } = useParams()
@@ -195,10 +390,9 @@ export default function JobDetailPage() {
         >
           {myFeedback.includes('not_interested') ? '✓ 已标记不感兴趣' : '👎 不感兴趣'}
         </button>
-        <Link className="btn" to={`/resume?job=${job.id}`}>
-          去简历工坊准备材料 →
-        </Link>
       </div>
+
+      <MaterialsWorkshop jobId={job.id} />
 
       <h2>岗位描述（原文）</h2>
       <div className="card" style={{ whiteSpace: 'pre-wrap' }}>

@@ -33,6 +33,21 @@ def main(argv: list[str] | None = None) -> int:
     p_fetch = sub.add_parser("fetch", help="从官方接口信源抓取岗位（wenke：米哈游/百度/网易）")
     p_fetch.add_argument("--companies", nargs="*", help="公司名列表（默认全部）")
     p_fetch.add_argument("--dry-run", action="store_true", help="只抓不入库（健康检查）")
+    p_paste = sub.add_parser("paste", help="从 stdin 读 JD 原文解析入库（粘贴主链的 CLI 入口）")
+    p_paste.add_argument("--save", action="store_true", help="直接入库（默认只打印草稿）")
+    p_paste.add_argument("--url", default=None, help="岗位链接（可选）")
+    p_jobs = sub.add_parser("jobs", help="列出/检索岗位")
+    p_jobs.add_argument("--q", default="", help="检索词")
+    p_jobs.add_argument("--limit", type=int, default=30)
+    p_apps = sub.add_parser("applications", help="列出投递跟踪")
+    p_apps.add_argument("--profile", required=True)
+    p_transition = sub.add_parser("transition", help="推进投递状态（漏斗内可跳步；applied_confirmed 除外）")
+    p_transition.add_argument("application_id")
+    p_transition.add_argument("status")
+    p_transition.add_argument("--note", default=None)
+    p_confirm = sub.add_parser("confirm-applied", help="用户确认已投递（进入投后阶段的唯一入口）")
+    p_confirm.add_argument("application_id")
+    p_confirm.add_argument("--channel", default=None, help="投递渠道（官网/BOSS/内推…）")
 
     args = parser.parse_args(argv)
     if args.data_dir:
@@ -156,6 +171,69 @@ def main(argv: list[str] | None = None) -> int:
                 mark = "✅" if o.eligible else "⛔"
                 print(f"  {mark} {o.rank_score or 0:5.1f} [{o.verdict}] "
                       f"{job.title} @ {job.employer_name}（{job.city or '城市未知'}）")
+            return 0
+
+        if args.cmd == "paste":
+            from jobhater.services.sources import parse_jd_text
+
+            text = sys.stdin.read()
+            try:
+                draft = parse_jd_text(text, url=args.url)
+            except ValueError as e:
+                print(f"❌ {e}", file=sys.stderr)
+                return 2
+            if not args.save:
+                print(json.dumps(draft, ensure_ascii=False, indent=2))
+                return 0
+            if not draft.get("title") or not draft.get("company"):
+                print("❌ 草稿缺 title/company，请补全后用 --save 重试", file=sys.stderr)
+                return 2
+            raw = {k: v for k, v in draft.items()
+                   if k not in ("parse_notes", "needs_review_fields")}
+            stats = JobService(con).ingest([raw], source_id="manual")
+            print(f"收到 {stats.received}：入库 {stats.added}，去重 {stats.deduped_exact}")
+            return 0
+
+        if args.cmd == "jobs":
+            jobs = JobService(con).search(args.q, limit=args.limit)
+            for j in jobs:
+                mark = "⏹" if j.status.value == "expired" else " "
+                print(f"  {mark} {j.title} @ {j.employer_name}"
+                      f"（{j.city or '城市未知'} · {j.salary_text or '薪资未标注'}）[{j.id}]")
+            return 0
+
+        if args.cmd == "applications":
+            from jobhater.services.lifecycle import ApplicationService
+
+            for a in ApplicationService(con).list(args.profile):
+                print(f"  [{a['status']}] {a.get('job_title') or a['job_id']}"
+                      f" @ {a.get('employer_name') or ''} [{a['id']}]")
+            return 0
+
+        if args.cmd == "transition":
+            from jobhater.services.lifecycle import ApplicationService, LifecycleError
+
+            try:
+                app = ApplicationService(con).transition(
+                    args.application_id, args.status, note=args.note
+                )
+            except LifecycleError as e:
+                print(f"❌ {e}", file=sys.stderr)
+                return 2
+            print(f"✅ 已推进到 {app['status']}")
+            return 0
+
+        if args.cmd == "confirm-applied":
+            from jobhater.services.lifecycle import ApplicationService, LifecycleError
+
+            try:
+                app = ApplicationService(con).confirm_applied(
+                    args.application_id, channel=args.channel
+                )
+            except LifecycleError as e:
+                print(f"❌ {e}", file=sys.stderr)
+                return 2
+            print(f"✅ 已记录用户确认投递（applied_at={app.get('applied_at')}）")
             return 0
     finally:
         con.close()

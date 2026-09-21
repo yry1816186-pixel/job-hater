@@ -256,6 +256,10 @@ class JobStatusIn(BaseModel):
     reason: str | None = None
 
 
+class ProfileIdIn(BaseModel):
+    profile_id: str
+
+
 def _err(e: Exception) -> HTTPException:
     if isinstance(e, (KeyError, LifecycleError)):
         return HTTPException(status_code=404 if isinstance(e, KeyError) else 422, detail=str(e).strip("'\""))
@@ -492,6 +496,59 @@ def register_routes(app: FastAPI) -> None:
     def list_sources(con=Depends(get_con)):
         return [s.model_dump() for s in JobService(con).list_sources()]
 
+    # ---------- 确定性材料生成（本地零 AI 依赖：v1 能力回归） ----------
+
+    @app.post("/api/jobs/{job_id}/materials/resume")
+    def materials_resume(job_id: str, body: ProfileIdIn, con=Depends(get_con)):
+        from jobhater.services.materials import MaterialsError, MaterialsService
+
+        try:
+            return MaterialsService(con).build_job_resume(body.profile_id, job_id)
+        except MaterialsError as e:
+            raise HTTPException(422, str(e)) from e
+        except KeyError as e:
+            raise _err(e) from e
+
+    @app.post("/api/jobs/{job_id}/materials/cover-letter")
+    def materials_cover_letter(job_id: str, body: ProfileIdIn, con=Depends(get_con)):
+        from jobhater.services.materials import MaterialsError, MaterialsService
+
+        try:
+            return MaterialsService(con).build_cover_letter(body.profile_id, job_id).model_dump()
+        except MaterialsError as e:
+            raise HTTPException(422, str(e)) from e
+        except KeyError as e:
+            raise _err(e) from e
+
+    @app.post("/api/jobs/{job_id}/materials/greeting")
+    def materials_greeting(job_id: str, body: ProfileIdIn, con=Depends(get_con)):
+        from jobhater.services.materials import MaterialsError, MaterialsService
+
+        try:
+            return MaterialsService(con).build_greeting(body.profile_id, job_id)
+        except MaterialsError as e:
+            raise HTTPException(422, str(e)) from e
+        except KeyError as e:
+            raise _err(e) from e
+
+    @app.get("/api/jobs/{job_id}/materials/interview-questions")
+    def materials_interview_questions(job_id: str, profile_id: str, con=Depends(get_con)):
+        from jobhater.services.materials import MaterialsService
+
+        try:
+            return MaterialsService(con).build_interview_questions(profile_id, job_id)
+        except KeyError as e:
+            raise _err(e) from e
+
+    @app.get("/api/jobs/{job_id}/materials/upskill-plan")
+    def materials_upskill_plan(job_id: str, profile_id: str, con=Depends(get_con)):
+        from jobhater.services.materials import MaterialsService
+
+        try:
+            return MaterialsService(con).build_upskill_plan(profile_id, job_id)
+        except KeyError as e:
+            raise _err(e) from e
+
     # ---------- 匹配 ----------
 
     @app.post("/api/match/run")
@@ -618,7 +675,10 @@ def register_routes(app: FastAPI) -> None:
 
     # ---------- 简历 ----------
 
-    from jobhater.services.resume import ResumeError, ResumeService  # noqa: WICS
+    from jobhater.services.resume import (  # 此导入在函数内：避免模块级循环依赖
+        ResumeError,
+        ResumeService,
+    )
 
     @app.post("/api/resumes/generate")
     def generate_master(body: dict, con=Depends(get_con)):
