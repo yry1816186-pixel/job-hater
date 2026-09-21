@@ -35,7 +35,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.29"]
+# mcp 2.x 重命名 FastMCP→MCPServer（breaking change）；钉 <2 直至完成迁移
+mcp = ["mcp>=1.29,<2"]
 # 中文词级分词（FTS5 检索质量增强；缺失时自动退回字符 bigram，功能不缺失）
 segment = ["jieba>=0.42"]
 # 简历 DOCX 导出
