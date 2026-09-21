@@ -56,6 +56,24 @@
 - 解密产物独立于微信本体目录，`DELETE /api/wechat/data` 一键清除。
 - 只读微信文件 + 只读进程内存；不写微信任何数据；不上传任何内容。
 
+### 补充：密钥检索能力升级（2026-09-22 追加批次）
+
+`keyring_scan` 已产品化社区已知最强方法（WeChatDataAnalysis 等公开实现的机制复现）：
+
+- **密码式验证**：`verify_as_password`——新版 WCDB 内存存 passphrase（每库 PBKDF2-256000
+  派生 enc_key），与既有 encKey 直通式并存；
+- **DLL XOR 混淆密钥提取**：`dll_xor_keys`——从 Weixin.dll 代码段 `4×mov rdx,imm64`
+  模式提取混淆密钥（安装目录自动发现，含版本子目录）；
+- **双布局结构定位**：`[ptr][0×8][32][47]` 容器签名与 MSVC `std::string [ptr][size=32]`
+  两种布局的指针解引用候选（熵筛后验证）。
+
+本机 4.1.15.13 实证该机制被新版密钥保护关闭（3836+7110 候选全量验证无命中，
+AES-NI C 扫描器 7GB 逐字节穷尽同样排除直接形态）；产品现在具备社区已知全部
+提取能力，版本回退或社区适配新布局后无需改代码即可命中。
+
+**UI 目视验收**：Playwright 独立实例截图 + visual-judge 判定通过（环境卡正确
+渲染微信 4.1.15.13 / 双账号 / 1068MB 消息库；布局无错乱、无溢出、控件完整）。
+
 ## 8. 已知限制（如实说明）
 
 - 本机微信 **4.1.13.12** 运行态未在可读内存中发现密钥（9 形态穷尽排除），
@@ -70,7 +88,7 @@
 
 | 项 | 位置 |
 |----|------|
-| 全量测试 | `tests/test_wechat.py`（22 例）`tests/test_wechat_e2e.py`（离线 E2E） |
+| 全量测试 | `tests/test_wechat.py`（26 例，含密码式验证/DLL XOR/双布局）`tests/test_wechat_e2e.py`（离线 E2E） |
 | WCDB 夹具 | `tests/wcdb_fixture.py`（手造 reserved-80 SQLite，varint 大端等 3 处深坑修复记录见 CHANGELOG） |
 | AES-NI 扫描器 | 会话工程产物 `wxscan.c`（FIPS-197 向量自检通过） |
 | 本机实扫日志 | 会话临时目录（7GB/353s/19116 chunks 穷尽记录） |
