@@ -1,51 +1,66 @@
 {
-  "mission": "彻底最高质量完成所有的开发和优化，不再反复无用测试，允许直接复用顶尖质量的代码/思路/技术",
+  "mission": "把 job-hater 做成完整成熟的商业级体验产品：能力/体验/性能/功能/使用多样性/用户体验对齐并超越顶尖商业求职产品（Teal/Huntr/Jobscan/Simplify/CareerFlow），全量开发禁止剩余项，分歧选最强最优，齐平或超越顶尖商业水平才允许停下",
   "status": "accepted",
-  "generated_at": "2026-09-21T04:30:00Z",
-  "head_commit": "94270d0",
-  "tag": "v2.2.0",
-  "release_url": "https://github.com/yry1816186-pixel/job-hater/releases/tag/v2.2.0",
+  "generated_at": "2026-09-21T07:05:00Z",
+  "head_commit": "e4fb98a",
+  "tag": "v3.0.0",
+  "release_url": "https://github.com/yry1816186-pixel/job-hater/releases/tag/v3.0.0",
   "requirements": [
     {
       "id": "N1",
-      "requirement": "彻底最高质量完成所有的开发和优化（前沿记录全部可执行项落地）",
+      "requirement": "商业基准研究与差距矩阵（两轮竞品调研：Teal+Huntr 全景 / Jobscan+Simplify+CareerFlow+中国对位产品）",
       "status": "pass",
       "evidence": [
-        "F1 黄金评测集：tests/golden/matching_golden.json 22标注用例 + test_matching_golden.py 常驻（engine_version锁定）",
-        "F1 首跑抓出存量真bug并修根因：recency isdigit()守卫使ISO日期恒判未知（matching.py 修复+注释）",
-        "F4 CI质量门禁job（quality-gate）+性能金丝雀job（perf-canary，2000岗宽松阈值）——ci.yml 新增",
-        "F5 mcp 1.x/2.x双路import兼容（本地mcp 2.2.0实测2测试绿），pyproject解除<2钉版",
-        "F6 JSON Resume互操作：export_json_resume/import_json_resume + 2路由 + 往返测试5项",
-        "F9 ICS日历导出（RFC5545）：lifecycle.calendar_ics + /api/calendar/ics + 看板按钮 + 测试4项",
-        "F8 docs/SOURCES.md 插件契约文档（raw键表/去重说明/验收清单）",
-        "F7/F10/F11/F12维持triage（触发条件/reject理由已在FRONTIER_STATUS记录，无新证据触发）",
-        "验证：113 pytest全绿（+31）+ruff绿+tsc+build绿+CI success(run 35562184653@94270d0，含新job)"
+        "两份研究代理报告（20项商业及格线清单/用户抱怨清单/超越机会清单/ATS报告11要素规格/中国网申字段清单）",
+        "差距矩阵落盘 .zcode/EXECUTION_STATE.md：20项中18项已具备或本批次新建、1项天然成立（开源自费）、1项有意不做（自定义看板阶段，13态诚实状态机是深度非限制）"
       ]
     },
     {
       "id": "N2",
-      "requirement": "不要再反复进行无用测试",
+      "requirement": "后端全量补齐：五张沉睡表激活+备份恢复+ATS报告引擎+标签+CSV+双模板+jobs since",
       "status": "pass",
       "evidence": [
-        "开发期全部定向测试：golden单独跑/interop单独跑/ics单独跑/mcp单独跑，无一中途全量",
-        "全程仅一次全量验证（里程碑点：113 passed 20.00s，pytest+ruff+canary+tsc+build一次串完）",
-        "CI只盯一次（run 35562184653 watch到success）"
+        "c274b70: contacts/reminders(确定性建议+防轰炸)/settings/interview_kit(逐字稿+stats+自评+AI走428门)/stats(applied_at事实判据)/backup(三重校验) + 30路由 + 15测试",
+        "3c45789: ats_scan.py(关键词覆盖70+可解析性30+证据链+反堆砌+透明度声明)/0004标签迁移/CSV导出(RFC4180+BOM)/compact模板 + 8测试",
+        "e4fb98a: serialize→临时文件（Py3.10 CI 红转绿）"
       ]
     },
     {
       "id": "N3",
-      "requirement": "允许直接复制和复用顶尖质量的代码、思路和技术",
+      "requirement": "前端全量补齐：看板拖拽/分析页/ATS面板/练习器/提醒面板/保存搜索/暗色/命令面板/设置中枢",
       "status": "pass",
       "evidence": [
-        "mcp：按官方迁移指南复用2.x MCPServer路径（双路import，非自造兼容层）",
-        "JSON Resume：直接采用开放标准schema（$schema声明+官方键名映射），非私有格式",
-        "iCalendar：按RFC 5545标准实现（CRLF/转义/VALARM/VALUE=DATE），非简化自制格式",
-        "评测集方法论：复用业界labeled-eval-data+CI-gate成熟实践（数据与断言分离，版本锁定）"
+        "d551adf: ApplicationsPage重建1810行(10列Kanban原生拖拽=合法transition+批量+联系人CRM+练习器)、AnalyticsPage(漏斗/周柱/渠道/薪资分位样本不足灰显)、JobDetailPage+860行(ATS报告面板+AI复盘428流)、Ctrl+K命令面板、暗色模式验证 data-theme=dark bg=rgb(23,22,20)",
+        "浏览器E2E LIVE_VERIFIED: 拖拽 applied_confirmed→interviewing、建议→采纳→提醒闭环、ATS 94分报告(Java证据链/Redis从经历命中/K8s唯一硬缺口/反堆砌黄牌)、练习器逐字稿→统计→自评提交、命令面板搜索跳岗"
+      ]
+    },
+    {
+      "id": "N4",
+      "requirement": "浏览器扩展（JD抓取+网申autofill不代投）",
+      "status": "pass",
+      "evidence": [
+        "02617dd: extension/ MV3(manifest/worker/content/popup/icons/README) 权限最小化(activeTab+scripting+storage) host仅127.0.0.1",
+        "内容脚本 LIVE_VERIFIED(真实注入fixture页): CAPTURE_JD 标题剥离+主内容区447字、FILL_FORM 7字段(下拉匹配'本科'/已填不覆盖/密码不碰/橙框高亮rgb(230,150,60))"
+      ]
+    },
+    {
+      "id": "N5",
+      "requirement": "全量验证+发布：146测试/tsc/build/CI 11绿/tag+Release",
+      "status": "pass",
+      "evidence": [
+        "pytest 146 全绿(exit 0)、tsc -b 零错、vite build ✓",
+        "CI run 35570784054 success: 3OS×py3.10/3.12 + node20/22 + 迁移烟测 + 性能金丝雀 + 黄金评测门禁 + Docker 全✓",
+        "tag v3.0.0 + GitHub Release https://github.com/yry1816186-pixel/job-hater/releases/tag/v3.0.0"
+      ]
+    },
+    {
+      "id": "N6",
+      "requirement": "恢复并收殓兄弟会话两批中断工作（不丢弃用户/前会话工作）",
+      "status": "pass",
+      "evidence": [
+        "7c90c05: 联系方式+BM25恒空修复+v1迁移硬化（116测试绿后提交）",
+        "c274b70+4fac6b1: 2.3.0真实数据批次完整收尾（版本/CHANGELOG/README/前端，tsc+build绿验证后提交）"
       ]
     }
-  ],
-  "honestly_not_done": [
-    "F7 ingest增量化（触发条件~50k岗位，真实库9.7k，PERFORMANCE.md已记录路径）",
-    "F10换存储/F11自建加密/F12盲AI扩张（reject，理由在FRONTIER_STATUS）"
   ]
 }

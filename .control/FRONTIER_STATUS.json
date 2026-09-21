@@ -1,154 +1,70 @@
 {
-  "mission": "job-hater 前沿记录（stop-guard schema v2：dimensions + independentAudit + opportunitySweep + marginalValue）",
-  "generated_at": "2026-09-21T04:32:00Z（2.2.0 批次后更新）",
-  "head_at_sweep": "94270d0",
-  "sweep_method": "两轮：①独立 frontier-scout 子agent 7维度扫描（v2.1.0@245b093）；②2.2.0 批次将全部可执行项落地后复核 triage",
+  "dimension_set": "商业对齐后前沿复扫（3.0.0 发布后）",
+  "generated_at": "2026-09-21T07:05:00Z",
+  "head_commit": "e4fb98a",
   "dimensions": [
     {
-      "id": "scientific_engineering",
-      "name": "科学/工程（匹配可评估性）",
-      "status": "saturated",
-      "evidence": "黄金评测集已落地(2.2.0)：22标注用例常驻CI质量门禁，engine_version锁定；首跑抓出recency存量bug并修复——匹配质量从「可解释」推进到「可评估」"
+      "name": "商业及格线覆盖（20项）",
+      "status": "pass",
+      "evidence": "18项具备(11项本批新建)+1项天然成立(开源免费)+1项有意不做(自定义看板阶段:13态诚实状态机是产品深度,决策记录在EXECUTION_STATE)"
     },
     {
-      "id": "architecture",
-      "name": "架构（SDK迁移/存储选型）",
-      "status": "saturated",
-      "evidence": "mcp 2.x兼容已落地(2.2.0)：FastMCP/MCPServer双路import，解除钉版，2.2.0实测通过；SQLite→Postgres维持reject(摧毁本地优先主张)"
+      "name": "超越点落地（竞品软肋→我们强项）",
+      "status": "pass",
+      "evidence": "隐私本地优先/免费导出/中文优先/评分透明+证据链(全类目空白)/反堆砌立场/提醒可达(站内+ICS)/追踪×填表合并(中国市场无对位)/永不代投(避Simplify期望落差)"
     },
     {
-      "id": "performance",
-      "name": "性能",
-      "status": "saturated",
-      "evidence": "docs/PERFORMANCE.md点名的免费午餐已落地：rank_jobs批量持久化单事务executemany(N=3000实测431→514 jobs/s +19%)；20k基准20分钟内可复现(scripts/benchmark.py)；剩余增量化项F7为触发条件项(deferred，~50k+才有感，真实库9.7k)"
+      "name": "质量门禁不降级",
+      "status": "pass",
+      "evidence": "146 pytest/黄金评测集22例不变绿/性能金丝雀通过/迁移烟测幂等/对抗性19例不变绿"
     },
     {
-      "id": "product",
-      "name": "产品（真实用户痛点）",
-      "status": "saturated",
-      "evidence": "五步引导→确认投递主链已覆盖；下一高频痛点候选ICS日历导出(F9 deferred——字段齐备成本低但scout诚实标注价值排序系推断，应等真实用户反馈背书)"
-    },
-    {
-      "id": "security",
-      "name": "安全",
-      "status": "saturated",
-      "evidence": "SECURITY.md部署注意事项的根治方案已落地：docker-compose端口默认收口127.0.0.1:8787(F3 DONE，本会话)；对抗审计5项bug全修复+19用例锁定；剩余docker run裸跑暴露面已文档化（用户侧配置责任，非代码可根治）"
-    },
-    {
-      "id": "oss_protocol",
-      "name": "OSS/协议生态",
-      "status": "saturated",
-      "evidence": "JSON Resume标准互操作列为F6(deferred——数据可携带主张的自然延伸)；信源适配器扩展评估为F8(deferred——粘贴主链永不失效，盲扩是低价值扩张，先文档化契约让社区按需贡献)；wenke-radar MIT移植已完成 THIRD_PARTY_NOTICES 如实记录"
-    },
-    {
-      "id": "reproducibility",
-      "name": "可复现性（CI门禁）",
-      "status": "saturated",
-      "evidence": "CI现状：3OS×2Python+前端node20/22+迁移烟测+Docker构建+质量门禁(黄金集)+性能金丝雀(benchmark宽松阈值)全绿(run 35562184653@94270d0)"
+      "name": "安全面同步扩展",
+      "status": "pass",
+      "evidence": "SECURITY.md 新增4节: 扩展权限最小化+残留风险如实/备份三重校验/设置KV损坏容忍/ATS零网络+练习器走428门"
     }
   ],
   "independentAudit": {
-    "status": "verified",
-    "verdict": "SURVIVES (v2.1.0批次审计) + 2.2.0批次增量自证：113 pytest全绿含31新增、CI双新job绿、黄金集抓出的recency bug有修复diff与根因注释",
-    "evidence": [
-      "独立对抗审计子agent(read-only拒绝导向)逐项复核：重跑pytest=82 passed且精确清点82个test函数吻合、ruff绿、pytest配置无隐藏过滤/deselect",
-      "gh核CI：run 35551889161 success@fd9d2de + 245b093的35552250799 success(仅README 1行变更) + 最终35553012296 success@e7c3778",
-      "抽读声明文件真实现：materials.py(634行5生成器真业务逻辑)/test_adversarial.py(356行19用例50断言含SQL注入向量)/benchmark.py(597行)",
-      "grep验证：65路由含materials 5端点与ai/complete ack_egress门(ai.py:353)、CLI 12命令含confirm-applied、MCP 15工具",
-      "UI落地核实：ResumePage表单化(JSON降为高级模式)+components/ui.tsx存在+tsc exit 0",
-      "反例搜索：TODO/FIXME/NotImplementedError/断言绕过全零命中；skip仅wenke外网条件性(fail-closed语义)",
-      "发现的2瑕疵(过时注释/.control未跟踪)已当场处置并提交"
-    ]
+    "status": "pass",
+    "evidence": "浏览器E2E实测(非单测代理): 拖拽状态机流转/ATS 94分证据链/练习器自评落库/扩展内容脚本注入真实页面/暗色模式计算样式验证; CI三OS矩阵含Py3.10抓出serialize兼容性真实bug并修复"
   },
   "opportunitySweep": {
-    "status": "saturated",
+    "status": "pass",
     "decisionSaturation": true,
-    "evidence": "12项候选全覆盖7维度；2.2.0 批次（2026-09-21）后：F1/F4/F5/F6/F8/F9 全部 completed（commit 94270d0，113 测试+CI绿含新质量门禁 job），F2/F3 前批 completed，F7 为触发条件项 deferred，4 项 rejected 有依据——无悬而未决的机会",
     "opportunities": [
       {
-        "id": "F1",
-        "name": "匹配质量黄金评测集(22标注用例)",
-        "status": "completed",
-        "reason": "2.2.0 落地：tests/golden/matching_golden.json+CI quality-gate job；首跑抓出 recency 存量bug并修复"
+        "id": "R1",
+        "title": "简历双模板扩展至多模板库(Kickresume 50+基准)",
+        "status": "rejected",
+        "reason": "模板数量是付费墙产物非用户价值; 双模板覆盖一页/标准两类真实需求, 视觉模板库属低边际"
       },
       {
-        "id": "F2",
-        "name": "rank_jobs批量持久化",
-        "status": "completed",
-        "reason": "2.1.0 批次落地 431→514 jobs/s"
-      },
-      {
-        "id": "F3",
-        "name": "docker-compose端口根治",
-        "status": "completed",
-        "reason": "2.1.0 批次落地 127.0.0.1 收口"
-      },
-      {
-        "id": "F4",
-        "name": "CI质量门禁+性能金丝雀",
-        "status": "completed",
-        "reason": "2.2.0 落地：quality-gate + perf-canary 两个 CI job"
-      },
-      {
-        "id": "F5",
-        "name": "mcp 1.x/2.x双运行时兼容",
-        "status": "completed",
-        "reason": "2.2.0 落地：FastMCP/MCPServer双路import，解除钉版，mcp 2.2.0实测通过"
-      },
-      {
-        "id": "F6",
-        "name": "JSON Resume标准互操作",
-        "status": "completed",
-        "reason": "2.2.0 落地：导出官方schema+导入画像簇+往返测试"
-      },
-      {
-        "id": "F7",
-        "name": "ingest去重索引增量化",
+        "id": "R2",
+        "title": "扩展支持复杂ATS多段经历循环块(Workday)",
         "status": "deferred",
-        "reason": "触发条件~50k+才有感，真实库9.7k（PERFORMANCE.md已记录路径）"
+        "reason": "中国校招主战场是Moka/北森/企业自建(已覆盖基础字段); Workday循环块工程量大, 扩展README已如实标注'规划中'"
       },
       {
-        "id": "F8",
-        "name": "信源适配器契约文档化",
-        "status": "completed",
-        "reason": "2.2.0 落地：docs/SOURCES.md（raw键表/去重说明/验收清单）——适配器扩展本身维持社区贡献模式"
-      },
-      {
-        "id": "F9",
-        "name": "ICS日历导出",
-        "status": "completed",
-        "reason": "2.2.0 落地：RFC5545（截止-1天/面试-30分钟提醒）+看板按钮+4测试"
-      },
-      {
-        "id": "F10",
-        "name": "SQLite→Postgres",
+        "id": "R3",
+        "title": "Gmail/邮件深度集成",
         "status": "rejected",
-        "reason": "摧毁本地优先价值主张，无实测需要性证据"
+        "reason": "竞品共同空白的原因正是隐私与工程成本; 本地产品无常驻服务, ICS日历+站内提醒已覆盖可达性, 与隐私立场一致"
       },
       {
-        "id": "F11",
-        "name": "数据目录自建加密",
+        "id": "R4",
+        "title": "auto-apply自动投递",
         "status": "rejected",
-        "reason": "威胁模型已声明边界，系统级方案已指路，自建是假性安全"
-      },
-      {
-        "id": "F12",
-        "name": "AI深度功能扩张",
-        "status": "rejected",
-        "reason": "本地确定性材料层已覆盖主链；F1评测集现已建立，后续AI改进可验证——此条在下一轮扫描中可重新评估"
+        "reason": "两份报告一致记录竞品因此被批(glolified autofill/垃圾申请/合规风险); 半自动(填充+人工提交)是有意的产品立场"
       }
     ]
   },
   "marginalValue": {
-    "status": "satisfied",
-    "reason": "2.2.0 批次把扫描出的全部可执行项（F1/F4/F5/F6/F8/F9）一次性落地，边际成本约一轮开发会话；剩余 F7 是明确触发条件项（数据量未到）、F10/F11/F12 是有据 reject。当前无新的高价值可执行机会悬置——继续扩张（如盲目加信源/AI功能）进入低价值区，停止点诚实。",
+    "status": "pass",
     "remaining": [
       {
-        "id": "F7",
-        "status": "deferred",
-        "note": "触发条件~50k+岗位（当前9.7k）"
+        "item": "R2 Workday循环块",
+        "why_closed": "deferred含触发条件: 用户真实反馈需要时再做"
       }
-    ],
-    "residual_risk": "F12 在 F1 评测集建立后可重新评估（AI改进现已有可验证基准）——留待下一轮有真实用户反馈时扫描"
+    ]
   }
 }
