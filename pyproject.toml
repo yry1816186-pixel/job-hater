@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jobhater"
-version = "2.3.0"
+version = "3.0.0"
 description = "Job Hater — 本地优先的中国求职全流程管理系统（发现→匹配→投递→跟踪→面试→Offer）"
 readme = "README.md"
 requires-python = ">=3.10"
