@@ -37,6 +37,16 @@ def _now() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
+def _app_dict(row: sqlite3.Row) -> dict:
+    """applications 行 → 契约 dict：tags_json 列解析为 tags 列表。"""
+    d = dict(row)
+    try:
+        d["tags"] = json.loads(d.pop("tags_json") or "[]")
+    except json.JSONDecodeError:
+        d["tags"] = []  # 标签是标注非事实：损坏不炸列表，如实置空
+    return d
+
+
 class LifecycleError(ValueError):
     """非法生命周期操作（状态机拒绝、实体不存在等）。"""
 
@@ -78,16 +88,48 @@ class ApplicationService:
         ).fetchone()
         if not row:
             raise LifecycleError(f"投递记录不存在: {application_id}")
-        return dict(row)
+        return _app_dict(row)
 
-    def list(self, profile_id: str) -> list[dict]:
-        rows = self.con.execute(
-            """SELECT a.*, p.title AS job_title, p.employer_name, p.city AS job_city
+    def list(self, profile_id: str, *, tag: str | None = None) -> list[dict]:
+        """画像的投递列表；tag 过滤在 Python 侧做（本地规模，避免 LIKE 元字符陷阱）。"""
+        sql = """SELECT a.*, p.title AS job_title, p.employer_name, p.city AS job_city
                  FROM applications a LEFT JOIN job_postings p ON p.id = a.job_id
-                 WHERE a.profile_id=? ORDER BY a.updated_at DESC""",
-            (profile_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+                 WHERE a.profile_id=? ORDER BY a.updated_at DESC"""
+        rows = [_app_dict(r) for r in self.con.execute(sql, (profile_id,)).fetchall()]
+        if tag:
+            return [r for r in rows if tag in r["tags"]]
+        return rows
+
+    # ---------- 标签（0004：用户自由标注，不参与状态机） ----------
+
+    def add_tag(self, application_id: str, tag: str) -> dict:
+        tag = (tag or "").strip()
+        if not tag:
+            raise LifecycleError("标签不能为空")
+        current = self.get(application_id)
+        if tag in current["tags"]:
+            return current  # 幂等
+        with transaction(self.con):
+            self.con.execute(
+                "UPDATE applications SET tags_json=?, updated_at=? WHERE id=?",
+                (json.dumps([*current["tags"], tag], ensure_ascii=False),
+                 _now(), application_id),
+            )
+            self._event(application_id, "tag_added", payload={"tag": tag})
+        return self.get(application_id)
+
+    def remove_tag(self, application_id: str, tag: str) -> dict:
+        current = self.get(application_id)
+        if tag not in current["tags"]:
+            raise LifecycleError(f"标签不存在: {tag}")
+        with transaction(self.con):
+            self.con.execute(
+                "UPDATE applications SET tags_json=?, updated_at=? WHERE id=?",
+                (json.dumps([t for t in current["tags"] if t != tag], ensure_ascii=False),
+                 _now(), application_id),
+            )
+            self._event(application_id, "tag_removed", payload={"tag": tag})
+        return self.get(application_id)
 
     def transition(
         self, application_id: str, to_status: str, *, note: str | None = None, payload: dict | None = None

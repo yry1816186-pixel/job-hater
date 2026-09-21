@@ -286,6 +286,7 @@ class Application(_Model):
     applied_at: str | None = None
     apply_channel: str | None = None
     notes: str | None = None
+    tags: list[str] = Field(default_factory=list)  # 用户自由标签（0004），不参与状态机
     created_at: str | None = None
     updated_at: str | None = None
 

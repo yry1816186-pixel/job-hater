@@ -357,8 +357,8 @@ class ResumeService:
                 lines.append(f"- {a.get('title', '')}" + (f"　{a['date']}" if a.get("date") else ""))
         return "\n".join(lines).strip() + "\n"
 
-    def render_html(self, version_id: str) -> str:
-        """自包含可打印 HTML（ATS 友好单栏，中文衬线标题+无衬线正文）。"""
+    def render_html(self, version_id: str, *, template: str = "classic") -> str:
+        """自包含可打印 HTML。template: classic（衬线标题标准版）/ compact（一页致密版）。"""
         s = self.get_version(version_id)["sections"]
         b = s.get("basics") or {}
         md_blocks: list[str] = []
@@ -424,7 +424,8 @@ class ResumeService:
             )
         body = "\n".join(md_blocks)
         contact = " ｜ ".join(x for x in (b.get("email"), b.get("phone")) if x)
-        return HTML_TEMPLATE.format(
+        wrapper = COMPACT_TEMPLATE if template == "compact" else HTML_TEMPLATE
+        return wrapper.format(
             name=_esc(b.get("name", "")), label=_esc(b.get("label", "")),
             contact=_esc(contact), body=body,
         )
@@ -580,8 +581,9 @@ class ResumeService:
                 counts["headline_filled"] = 1
         return counts
 
-    def export_file(self, version_id: str, fmt: str) -> Path:
-        """导出到 exports 目录。fmt: md/json/html/pdf/docx/json-resume。可选依赖缺失时如实报错。"""
+    def export_file(self, version_id: str, fmt: str, *, template: str = "classic") -> Path:
+        """导出到 exports 目录。fmt: md/json/html/pdf/docx/json-resume；html 系可选
+        template=compact（一页致密版）。可选依赖缺失时如实报错。"""
         out_dir = config.exports_dir()
         version = self.get_version(version_id)
         base = f"resume_{version['version']}_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -603,12 +605,12 @@ class ResumeService:
             )
             return p
         if fmt == "html":
-            p = out_dir / f"{base}.html"
-            p.write_text(self.render_html(version_id), encoding="utf-8")
+            p = out_dir / (f"{base}_{template}.html" if template != "classic" else f"{base}.html")
+            p.write_text(self.render_html(version_id, template=template), encoding="utf-8")
             return p
         if fmt == "pdf":
             html_path = out_dir / f"{base}.html"
-            html_path.write_text(self.render_html(version_id), encoding="utf-8")
+            html_path.write_text(self.render_html(version_id, template=template), encoding="utf-8")
             try:
                 from playwright.sync_api import sync_playwright
             except ImportError as e:
@@ -698,6 +700,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
 <header><h1>{name}</h1><div class="label">{label}</div><div class="contact">{contact}</div></header>
+{body}
+</body>
+</html>
+"""
+
+# compact：一页致密模板（无衬线、窄行距、单行条目）——经历多/严格控制一页时用。
+# 与 classic 共享 body 构造，仅版式不同；同样纯文本+标准分节，ATS 可解析。
+COMPACT_TEMPLATE = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>{name} - 简历</title>
+<style>
+  :root {{ --ink: #111; --muted: #555; --line: #bbb; }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+         color: var(--ink); font-size: 9.5pt; line-height: 1.38; max-width: 200mm;
+         margin: 0 auto; padding: 8mm 2mm; }}
+  header {{ display: flex; align-items: baseline; gap: 10pt; flex-wrap: wrap;
+            border-bottom: 1.6pt solid var(--ink); padding-bottom: 4pt; margin-bottom: 7pt; }}
+  h1 {{ font-size: 15pt; letter-spacing: 1pt; }}
+  .label {{ color: var(--muted); font-size: 10pt; }}
+  .contact {{ color: var(--muted); font-size: 9pt; margin-left: auto; }}
+  h2 {{ font-size: 10.5pt; letter-spacing: 1pt; margin: 8pt 0 4pt;
+       border-bottom: 0.6pt solid var(--line); padding-bottom: 1pt; }}
+  .item {{ margin-bottom: 5pt; page-break-inside: avoid; }}
+  .item-head {{ display: flex; align-items: baseline; gap: 6pt; flex-wrap: wrap; }}
+  .item-title {{ font-weight: 700; }}
+  .item-sub {{ color: var(--muted); flex: 1; }}
+  .item-date {{ color: var(--muted); font-size: 8.5pt; white-space: nowrap; }}
+  p {{ margin-top: 2pt; }}
+  .summary {{ color: var(--muted); }}
+  .skills {{ margin-top: 2pt; }}
+  li {{ margin: 1pt 0 1pt 12pt; }}
+  @media print {{ body {{ padding: 0; }} }}
+</style>
+</head>
+<body>
+<header><h1>{name}</h1><span class="label">{label}</span><span class="contact">{contact}</span></header>
 {body}
 </body>
 </html>

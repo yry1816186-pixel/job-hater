@@ -341,6 +341,26 @@ def _err(e: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=str(e))
 
 
+def _csv_response(header: list[str], rows: list[dict], filename: str) -> Response:
+    """CSV 导出（UTF-8 + BOM：Excel 直接打开中文不乱码；逗号/引号/换行按 RFC 4180 转义）。"""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\r\n")
+    w.writerow(header)
+    for r in rows:
+        w.writerow([
+            ";".join(v) if isinstance((v := r.get(k)), list) else v
+            for k in header
+        ])
+    return Response(
+        content="\ufeff" + buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def register_routes(app: FastAPI) -> None:
     @app.get("/api/health")
     def health():
@@ -865,11 +885,15 @@ def register_routes(app: FastAPI) -> None:
             raise _err(e) from e
 
     @app.get("/api/resume-versions/{version_id}/export")
-    def export_version(version_id: str, fmt: str = "md", con=Depends(get_con)):
+    def export_version(
+        version_id: str, fmt: str = "md", template: str = "classic", con=Depends(get_con)
+    ):
         if fmt not in ("md", "json", "json-resume", "html", "pdf", "docx"):
             raise HTTPException(422, "fmt ∈ md/json/json-resume/html/pdf/docx")
+        if template not in ("classic", "compact"):
+            raise HTTPException(422, "template ∈ classic/compact")
         try:
-            path = ResumeService(con).export_file(version_id, fmt)
+            path = ResumeService(con).export_file(version_id, fmt, template=template)
         except ResumeError as e:
             raise HTTPException(422, str(e)) from e
         from fastapi.responses import FileResponse, PlainTextResponse
@@ -1183,6 +1207,55 @@ def register_routes(app: FastAPI) -> None:
     @app.get("/api/stats/salary")
     def stats_salary(city: str | None = None, con=Depends(get_con)):
         return StatsService(con).salary_insights(city=city)
+
+    # ================= ATS 简历-JD 匹配报告（确定性） =================
+
+    @app.get("/api/jobs/{job_id}/ats-scan")
+    def ats_scan(job_id: str, resume_version_id: str = Query(alias="resume_version_id"), con=Depends(get_con)):
+        from jobhater.services.ats_scan import ATSScanService
+
+        try:
+            return ATSScanService(con).scan(job_id, resume_version_id)
+        except ValueError as e:
+            raise _err(e) from e
+
+    # ================= 投递标签（0004） =================
+
+    @app.post("/api/applications/{app_id}/tags/{tag}")
+    def add_app_tag(app_id: str, tag: str, con=Depends(get_con)):
+        try:
+            return ApplicationService(con).add_tag(app_id, tag)
+        except ValueError as e:
+            raise _err(e) from e
+
+    @app.delete("/api/applications/{app_id}/tags/{tag}")
+    def remove_app_tag(app_id: str, tag: str, con=Depends(get_con)):
+        try:
+            return ApplicationService(con).remove_tag(app_id, tag)
+        except ValueError as e:
+            raise _err(e) from e
+
+    # ================= CSV 导出（Excel 兼容，带 BOM） =================
+
+    @app.get("/api/export/applications.csv")
+    def export_applications_csv(profile_id: str, con=Depends(get_con)):
+        rows = ApplicationService(con).list(profile_id)
+        header = ["id", "status", "job_title", "employer_name", "job_city",
+                  "applied_at", "apply_channel", "tags", "notes", "created_at", "updated_at"]
+        return _csv_response(header, rows, "applications.csv")
+
+    @app.get("/api/export/jobs.csv")
+    def export_jobs_csv(con=Depends(get_con)):
+        jobs = JobService(con).search("", limit=10000)
+        rows = [{
+            "id": j.id, "title": j.title, "employer_name": j.employer_name, "city": j.city,
+            "salary_text": j.salary_text, "deadline": j.deadline,
+            "published_at": j.published_at, "status": j.status.value,
+            "canonical_url": j.canonical_url,
+        } for j in jobs]
+        header = ["id", "title", "employer_name", "city", "salary_text", "deadline",
+                  "published_at", "status", "canonical_url"]
+        return _csv_response(header, rows, "jobs.csv")
 
     # ================= 全量备份与恢复 =================
 
