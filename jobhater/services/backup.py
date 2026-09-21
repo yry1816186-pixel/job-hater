@@ -36,15 +36,18 @@ class BackupService:
         self.db_path = db_path
 
     def snapshot(self) -> tuple[bytes, str]:
-        """在线快照当前库 → (字节, 建议文件名)。"""
-        dst = sqlite3.connect(":memory:")
-        try:
-            self.con.backup(dst)
-            data = dst.serialize()
-        finally:
-            dst.close()
+        """在线快照当前库 → (字节, 建议文件名)。经临时文件而非 serialize()
+        （Connection.serialize 是 Python 3.11+ 才有，3.10 不带）。"""
+        with tempfile.TemporaryDirectory(prefix="jobhater_snap_") as td:
+            tmp = Path(td) / "snap.db"
+            dst = sqlite3.connect(tmp)
+            try:
+                self.con.backup(dst)
+            finally:
+                dst.close()
+            data = tmp.read_bytes()
         stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        return bytes(data), f"jobhater_backup_{stamp}.db"
+        return data, f"jobhater_backup_{stamp}.db"
 
     def restore(self, data: bytes) -> dict:
         """用上传的快照原位替换当前库。校验失败抛 BackupError，原库不动。"""
