@@ -14,6 +14,7 @@ import OnboardingPage from './pages/OnboardingPage'
 import ProfilePage from './pages/ProfilePage'
 import ResumePage from './pages/ResumePage'
 import SettingsPage from './pages/SettingsPage'
+import WeChatPage from './pages/WeChatPage'
 import { ToastProvider } from './components/ui'
 
 interface ProfileCtx {
@@ -56,6 +57,7 @@ const COMMAND_DESTS = [
   { to: '/offers', label: 'Offer 比较', hint: '页面' },
   { to: '/profile', label: '我的画像', hint: '页面' },
   { to: '/import', label: '导入岗位（粘贴 JD）', hint: '页面' },
+  { to: '/wechat', label: '微信招聘雷达 · 扫描聊天记录', hint: '页面' },
   { to: '/settings', label: '设置与隐私 · 备份恢复', hint: '页面' },
 ]
 
@@ -220,6 +222,7 @@ export default function App() {
               <NavLink to="/welcome" className={navCls}>新手向导</NavLink>
               <NavLink to="/profile" className={navCls}>我的画像</NavLink>
               <NavLink to="/import" className={navCls}>导入岗位</NavLink>
+              <NavLink to="/wechat" className={navCls}>微信招聘雷达</NavLink>
               <div className="nav-group">求职推进</div>
               <NavLink to="/jobs" className={navCls}>岗位收件箱</NavLink>
               <NavLink to="/applications" className={navCls}>投递看板</NavLink>
@@ -244,6 +247,7 @@ export default function App() {
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/jobs/:jobId" element={<JobDetailPage />} />
                 <Route path="/import" element={<ImportPage />} />
+                <Route path="/wechat" element={<WeChatPage />} />
                 <Route path="/applications" element={<ApplicationsPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/resume" element={<ResumePage />} />

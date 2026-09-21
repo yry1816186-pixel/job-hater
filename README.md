@@ -95,6 +95,7 @@ job-hater fetch --companies mihoyo        # 官网信源抓取（米哈游/百�
 | 信源 | 方式 | 状态 |
 |------|------|------|
 | 粘贴导入 | 任何网站复制 JD 原文 → 解析草稿 → 确认入库 | ✅ 主链，永远可用 |
+| **微信招聘雷达** | 「微信招聘雷达」页一键扫描本机微信 4.x（Windows）聊天记录：自动检测环境 → 进程内存提取数据库密钥（仅内存流转，绝不落盘）→ 解密 → 识别校招/实习/社招信息（公司/岗位/届别/薪资/截止/投递方式，证据链可查）→ 勾选导入岗位库 | ✅ 本地处理，需微信已登录运行；安装 `pip install -e ".[wechat]"` |
 | 浏览器助手 | Chrome/Edge 扩展：页面上一键抓 JD 入库（见 `extension/README.md`） | ✅ |
 | 文件导入 | JSON（数组或 `{"jobs":[...]}`） | ✅ |
 | 校招官网适配器 | `job-hater fetch --companies mihoyo,baidu,netease`（米哈游/百度/网易校招官网公开 JSON API，来自 MIT 项目 wenke-radar 的移植，限速抓取） | ✅ 已接入 |

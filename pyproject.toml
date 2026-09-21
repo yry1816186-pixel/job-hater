@@ -46,6 +46,12 @@ segment = ["jieba>=0.42"]
 docx = ["python-docx>=1.1"]
 # 简历 PDF 导出（无头浏览器打印；缺失时提供浏览器打印降级路径）
 pdf = ["playwright>=1.44"]
+# 微信本地数据源（Windows 微信 4.x 聊天记录解密扫描；缺失时功能入口给出安装指引）
+wechat = [
+    "pycryptodome>=3.20",
+    "numpy>=1.26",
+    "zstandard>=0.22",
+]
 # 开发与测试
 dev = [
     "pytest>=8",

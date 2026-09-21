@@ -2,6 +2,41 @@
 
 格式遵循 Keep a Changelog；版本遵循语义化版本（SEMVER）。
 
+## [3.2.0] - 2026-09-22
+
+微信本地数据源批次：新增「微信招聘雷达」，自动检测本机微信 4.x（Windows 桌面版）
+聊天记录并识别其中全部招聘信息（校招/实习/社招），一键导入岗位库。
+
+### Added
+- **微信环境自动检测**（`jobhater/services/wechat/detect.py`）：注册表/ini 配置/
+  常见位置三链路自动发现数据目录与账号，无需手工配置；进程/版本/账号/阻塞项
+  （blockers）以可行动文案返回 UI。
+- **SQLCipher4 变体解密器**（`decrypt.py`）：AES-256-CBC + HMAC-SHA512、
+  reserve=80、页 1 salt；密钥 HMAC 终审（无假阳性）+ 首块 AES 快筛；解密输出
+  标准 SQLite；测试用加密器支持合成库往返。
+- **进程内存密钥检索**（`keyring_scan.py`）：枚举 Weixin.exe 全部可读区域，
+  hex 字符串（ASCII/UTF-16）+ 逐字节滑窗熵预筛（numpy）候选，多锚点验证
+  （全部消息/联系人库），密钥仅内存流转绝不落盘。
+- **微信 4.x 消息解析**（`parser.py`）：`Msg_<md5(talker)>` 每会话表 + Name2Id
+  映射 + zstd 压缩内容解压 + 群聊发送者前缀剥离 + 联系人备注>昵称显示名。
+- **招聘识别引擎**（`recruit.py`）：纯规则、可解释（每条命中携带证据链）；
+  意图词/届别/类型/薪资/城市/学历/投递方式/截止时间抽取；求职者方向负信号
+  压分；知名企业裸名词典 + 公司后缀/标签行双模式；置信度透明加权。
+- **扫描编排服务**（`service.py`）：后台线程全流程（检测→密钥→解密→解析→
+  识别）+ 阶段进度 + 同发送者 3 分钟连发消息合并识别（拆条 JD 拼回整体）+
+  结果缓存 JSON（不含密钥）+ purge 一键清除。
+- **API**：`GET /api/wechat/env`、`POST /api/wechat/scan|stop|import`、
+  `GET /api/wechat/status|results`、`DELETE /api/wechat/data`；导入走统一
+  ingest 链（去重/规范化/FTS），source_id=wechat。
+- **前端「微信招聘雷达」页**（`WeChatPage.tsx`）：环境状态卡（缺什么怎么补）、
+  一键扫描 + 阶段进度动画、结果卡（届别/类型/置信度/关键词过滤，原文与
+  识别依据折叠可查）、批量导入岗位库、本地数据一键清除。
+- **依赖**：新增 extras `wechat`（pycryptodome/numpy/zstandard）；缺失时
+  功能降级为明确安装指引，不阻断应用。
+- **测试**：22 条新增用例——手造 WCDB 风格（reserved=80）SQLite 夹具、
+  加密往返+篡改拒绝、解析金样（zstd/群聊/过滤）、识别正负样本、离线 E2E
+  全链路（密钥不落盘断言）、API 契约。
+
 ## [3.0.0] - 2026-09-21
 
 商业级对齐批次：以 Teal / Huntr / Jobscan / Simplify / CareerFlow 为基准做全量差距
