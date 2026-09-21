@@ -88,13 +88,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             print(f"dry-run：共获取 {len(raw)} 条，未入库")
             return 0
-        stats = JobService(con).ingest(raw, source_id="wenke")
-        js = JobService(con)
-        ok_any = any(r.ok for r in adapter.last_fetch_report.values())
-        js.record_source_health(
-            "wenke", ok=ok_any,
-            message=adapter.health_check().message,
-        )
+        apply_all()
+        con = connect()
+        try:
+            stats = JobService(con).ingest(raw, source_id="wenke")
+            js = JobService(con)
+            ok_any = any(r.ok for r in adapter.last_fetch_report.values())
+            js.record_source_health(
+                "wenke", ok=ok_any,
+                message=adapter.health_check().message,
+            )
+        finally:
+            con.close()
         print(
             f"收到 {stats.received}：入库 {stats.added}，精确去重 {stats.deduped_exact}，"
             f"近似 {stats.deduped_near}，补全 {stats.enriched}，拒绝 {stats.rejected}"

@@ -201,6 +201,24 @@ class ProfileService:
             )
             return cur.rowcount
 
+    def delete_evidence(self, profile_id: str, evidence_id: str) -> None:
+        """删除单条证据。已被简历 bullet 引用的证据删除后 factcheck 会如实报缺失——
+        这是用户可理解的行为（修复路径：补回证据或改写 bullet），不做静默级联。"""
+        with transaction(self.con):
+            cur = self.con.execute(
+                "DELETE FROM evidence WHERE profile_id=? AND id=?", (profile_id, evidence_id)
+            )
+            if cur.rowcount == 0:
+                raise KeyError(f"证据不存在: {evidence_id}")
+
+    def delete_skill(self, profile_id: str, skill_id: str) -> None:
+        with transaction(self.con):
+            cur = self.con.execute(
+                "DELETE FROM skills WHERE profile_id=? AND id=?", (profile_id, skill_id)
+            )
+            if cur.rowcount == 0:
+                raise KeyError(f"技能不存在: {skill_id}")
+
     # ---------- 求职偏好 ----------
 
     def create_preset(self, profile_id: str, name: str, **kw) -> SearchPreset:
@@ -254,6 +272,16 @@ class ProfileService:
             )
             cur = self.con.execute(
                 "UPDATE search_presets SET is_active=1 WHERE profile_id=? AND id=?",
+                (profile_id, preset_id),
+            )
+            if cur.rowcount == 0:
+                raise KeyError(f"preset 不存在: {preset_id}")
+
+    def delete_preset(self, profile_id: str, preset_id: str) -> None:
+        """删除偏好。删除的是当前激活项时清空激活位（匹配运行会如实报无偏好）。"""
+        with transaction(self.con):
+            cur = self.con.execute(
+                "DELETE FROM search_presets WHERE profile_id=? AND id=?",
                 (profile_id, preset_id),
             )
             if cur.rowcount == 0:

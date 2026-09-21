@@ -214,6 +214,48 @@ class EnabledIn(BaseModel):
     enabled: bool
 
 
+class AICompleteIn(BaseModel):
+    """AI 任务执行（远程 opt-in 唯一入口）。ack_egress=False 时返回 428 + 披露文本，
+    调用方必须先向用户展示披露并取得确认后重试。"""
+    task: str
+    system: str
+    user: str
+    ack_egress: bool = False
+    max_tokens: int = Field(default=2048, ge=1, le=32768)
+    temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    json_schema: dict | None = None
+
+
+class AwardIn(BaseModel):
+    name: str
+    issuer: str | None = None
+    date: str | None = None
+    level: str | None = None
+    description: str | None = None
+
+
+class CertificationIn(BaseModel):
+    name: str
+    issuer: str | None = None
+    issue_date: str | None = None
+    expire_date: str | None = None
+    credential_id: str | None = None
+
+
+class InterviewFinishIn(BaseModel):
+    outcome: str  # passed / failed / pending / unknown
+    notes: str | None = None
+
+
+class LinkResumeIn(BaseModel):
+    resume_version_id: str
+
+
+class JobStatusIn(BaseModel):
+    status: str  # active / expired / archived / rejected
+    reason: str | None = None
+
+
 def _err(e: Exception) -> HTTPException:
     if isinstance(e, (KeyError, LifecycleError)):
         return HTTPException(status_code=404 if isinstance(e, KeyError) else 422, detail=str(e).strip("'\""))
@@ -273,6 +315,28 @@ def register_routes(app: FastAPI) -> None:
         except Exception as e:
             raise _err(e) from e
 
+    @app.delete("/api/profiles/{profile_id}/skills/{skill_id}")
+    def delete_skill(profile_id: str, skill_id: str, con=Depends(get_con)):
+        try:
+            ProfileService(con).delete_skill(profile_id, skill_id)
+            return {"deleted": skill_id}
+        except Exception as e:
+            raise _err(e) from e
+
+    @app.post("/api/profiles/{profile_id}/awards")
+    def add_award(profile_id: str, body: AwardIn, con=Depends(get_con)):
+        try:
+            return ProfileService(con).add_award(profile_id, **body.model_dump()).model_dump()
+        except Exception as e:
+            raise _err(e) from e
+
+    @app.post("/api/profiles/{profile_id}/certifications")
+    def add_certification(profile_id: str, body: CertificationIn, con=Depends(get_con)):
+        try:
+            return ProfileService(con).add_certification(profile_id, **body.model_dump()).model_dump()
+        except Exception as e:
+            raise _err(e) from e
+
     @app.post("/api/profiles/{profile_id}/evidence")
     def add_evidence(profile_id: str, body: EvidenceIn, con=Depends(get_con)):
         try:
@@ -296,6 +360,14 @@ def register_routes(app: FastAPI) -> None:
     def confirm_evidence(profile_id: str, body: EvidenceConfirmIn, con=Depends(get_con)):
         n = ProfileService(con).confirm_evidence(profile_id, body.evidence_ids)
         return {"confirmed": n}
+
+    @app.delete("/api/profiles/{profile_id}/evidence/{evidence_id}")
+    def delete_evidence(profile_id: str, evidence_id: str, con=Depends(get_con)):
+        try:
+            ProfileService(con).delete_evidence(profile_id, evidence_id)
+            return {"deleted": evidence_id}
+        except Exception as e:
+            raise _err(e) from e
 
     # ---------- 偏好 ----------
 
@@ -326,6 +398,20 @@ def register_routes(app: FastAPI) -> None:
             raise HTTPException(404, "preset 不存在")
         ps.activate_preset(preset.profile_id, preset_id)
         return {"ok": True}
+
+    @app.delete("/api/presets/{preset_id}")
+    def delete_preset(preset_id: str, con=Depends(get_con)):
+        try:
+            ps = ProfileService(con)
+            preset = ps.get_preset(preset_id)
+            if not preset:
+                raise HTTPException(404, "preset 不存在")
+            ps.delete_preset(preset.profile_id, preset_id)
+            return {"deleted": preset_id}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise _err(e) from e
 
     # ---------- 岗位 ----------
 
@@ -370,7 +456,13 @@ def register_routes(app: FastAPI) -> None:
             offset=offset,
         )
         return {
-            "total": svc.count(),
+            "total": svc.count_filtered(
+                q,
+                cities=[city] if city else None,
+                recruitment_types=[recruitment_type] if recruitment_type else None,
+                statuses=[status] if status else None,
+                near_dup_only=near_dup_only,
+            ),
             "items": [j.model_dump() for j in jobs],
         }
 
@@ -387,6 +479,14 @@ def register_routes(app: FastAPI) -> None:
                 .model_dump() if MatchService(con).latest_for_job(job_id, profile_id) else None
             )
         return out
+
+    @app.patch("/api/jobs/{job_id}/status")
+    def set_job_status(job_id: str, body: JobStatusIn, con=Depends(get_con)):
+        try:
+            JobService(con).set_status(job_id, body.status, body.reason)
+            return JobService(con).get(job_id).model_dump()
+        except Exception as e:
+            raise _err(e) from e
 
     @app.get("/api/sources")
     def list_sources(con=Depends(get_con)):
@@ -429,6 +529,21 @@ def register_routes(app: FastAPI) -> None:
     def list_applications(profile_id: str, con=Depends(get_con)):
         return ApplicationService(con).list(profile_id)
 
+    @app.get("/api/applications/{app_id}")
+    def get_application(app_id: str, con=Depends(get_con)):
+        try:
+            return ApplicationService(con).get(app_id)
+        except Exception as e:
+            raise _err(e) from e
+
+    @app.post("/api/applications/{app_id}/resume")
+    def link_resume(app_id: str, body: LinkResumeIn, con=Depends(get_con)):
+        try:
+            ApplicationService(con).link_resume(app_id, body.resume_version_id)
+            return ApplicationService(con).get(app_id)
+        except Exception as e:
+            raise _err(e) from e
+
     @app.post("/api/applications/{app_id}/transition")
     def transition(app_id: str, body: TransitionIn, con=Depends(get_con)):
         try:
@@ -463,6 +578,16 @@ def register_routes(app: FastAPI) -> None:
     def list_interviews(app_id: str, con=Depends(get_con)):
         return [i.model_dump() for i in ApplicationService(con).list_interviews(app_id)]
 
+    @app.post("/api/interviews/{interview_id}/finish")
+    def finish_interview(interview_id: str, body: InterviewFinishIn, con=Depends(get_con)):
+        try:
+            ApplicationService(con).finish_interview(
+                interview_id, outcome=body.outcome, notes=body.notes
+            )
+            return {"ok": True, "interview_id": interview_id, "outcome": body.outcome}
+        except Exception as e:
+            raise _err(e) from e
+
     @app.post("/api/offers")
     def add_offer(body: OfferIn, con=Depends(get_con)):
         try:
@@ -474,7 +599,7 @@ def register_routes(app: FastAPI) -> None:
 
     @app.get("/api/offers")
     def list_offers(profile_id: str, con=Depends(get_con)):
-        return [o.model_dump() for o in ApplicationService(con).list_offers(profile_id)]
+        return ApplicationService(con).list_offers(profile_id)
 
     @app.post("/api/offers/compare")
     def compare_offers(body: OfferCompareIn, con=Depends(get_con)):
@@ -625,3 +750,30 @@ def register_routes(app: FastAPI) -> None:
         if task not in EGRESS_DISCLOSURES:
             raise HTTPException(422, f"未知任务类型，可选：{sorted(EGRESS_DISCLOSURES)}")
         return {"task": task, "disclosure": AIService(con).egress_disclosure(task)}
+
+    @app.get("/api/ai/tasks")
+    def ai_tasks(con=Depends(get_con)):
+        """任务目录：label + 当前是否可用 + 各自出境披露。"""
+        return AIService(con).list_tasks()
+
+    @app.post("/api/ai/complete")
+    def ai_complete(body: AICompleteIn, con=Depends(get_con)):
+        """AI 任务执行（远程 opt-in 唯一入口）。
+
+        - 本地模式 → 200 {executed:false, reason:"local_mode"}（诚实状态，非错误）
+        - 未确认披露 → 428 {disclosure}（调用方先展示、用户确认后带 ack_egress 重试）
+        """
+        from jobhater.services.ai import EgressNotAcknowledged
+
+        try:
+            return AIService(con).run_task(
+                body.task, body.system, body.user,
+                ack_egress=body.ack_egress, max_tokens=body.max_tokens,
+                temperature=body.temperature, json_schema=body.json_schema,
+            )
+        except EgressNotAcknowledged as e:
+            raise HTTPException(428, detail={"disclosure": str(e), "task": body.task}) from e
+        except KeyError as e:
+            raise _err(e) from e
+        except Exception as e:
+            raise _err(e) from e

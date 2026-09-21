@@ -34,6 +34,10 @@ class AINotConfigured(AIError):
     """本地模式：未启用任何远程 provider。调用方应走非 AI 降级路径。"""
 
 
+class EgressNotAcknowledged(AIError):
+    """远程模式但调用方未确认出境披露。路由映射 428，detail 携带披露文本。"""
+
+
 # 任务 → 出境数据类别披露（UI 在调用前展示；保持与实际请求一致是硬要求）
 EGRESS_DISCLOSURES: dict[str, str] = {
     "job_deep_review": "发送：该岗位的标题/公司/JD 全文 + 你的画像摘要（技能、经历标签），不含联系方式",
@@ -300,3 +304,58 @@ class AIService:
         if isinstance(provider, NoneProvider):
             return "本地模式：不会发送任何数据。"
         return EGRESS_DISCLOSURES[task] + "（接收方：你启用的 AI Provider）"
+
+    def list_tasks(self) -> list[dict]:
+        """任务目录：UI 据此渲染可用 AI 能力与各自的出境披露。"""
+        provider = self.active_provider()
+        local = isinstance(provider, NoneProvider)
+        labels = {
+            "job_deep_review": "岗位深度分析",
+            "resume_rewrite": "简历改写建议",
+            "cover_letter": "求职信起草",
+            "interview_mock": "模拟面试",
+            "interview_review": "面试复盘",
+            "fact_extraction": "文档事实提取",
+        }
+        return [
+            {
+                "task": t,
+                "label": labels.get(t, t),
+                "disclosure": self.egress_disclosure(t),
+                "available": not local,
+            }
+            for t in EGRESS_DISCLOSURES
+        ]
+
+    def run_task(
+        self, task: str, system: str, user: str, *, ack_egress: bool = False,
+        max_tokens: int = 2048, temperature: float = 0.3,
+        json_schema: dict | None = None,
+    ) -> dict:
+        """执行一次 AI 任务（远程 opt-in 的唯一入口）。
+
+        诚实语义：
+        - 本地模式（未启用 provider）→ executed=False + 降级提示，不是错误；
+        - 远程模式但 ack_egress=False → EgressNotAcknowledged（路由映射 428），
+          携带披露文本，强制调用方先向用户展示并取得确认；
+        - 日志与返回体永不包含 API key。
+        """
+        if task not in EGRESS_DISCLOSURES:
+            raise KeyError(f"未知任务类型: {task}")
+        provider = self.active_provider()
+        if isinstance(provider, NoneProvider):
+            return {
+                "executed": False,
+                "reason": "local_mode",
+                "message": "未启用任何远程 AI Provider（本地模式）。AI 深度分析/改写类功能不可用，"
+                           "其余功能不受影响；可在「设置与隐私」页启用 Provider。",
+            }
+        if not ack_egress:
+            raise EgressNotAcknowledged(EGRESS_DISCLOSURES[task])
+        result = provider.complete(
+            TaskRequest(
+                task=task, system=system, user=user,
+                max_tokens=max_tokens, temperature=temperature, json_schema=json_schema,
+            )
+        )
+        return {"executed": True, "task": task, "result": result}

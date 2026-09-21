@@ -93,8 +93,12 @@ def parse_jd_text(text: str, *, url: str | None = None) -> dict[str, Any]:
         if m:
             draft["url"] = m.group(0)
     draft["parse_notes"] = notes
+    # 用户直接阅读的提示（中文标签）；键名与草稿字段一一对应
     draft["needs_review_fields"] = [
-        f for f in ("title", "company", "city", "salary") if not draft.get(f)
+        label for field, label in (
+            ("title", "岗位标题"), ("company", "公司"), ("city", "城市"), ("salary", "薪资"),
+        )
+        if not draft.get(field)
     ]
     if not draft.get("company"):
         notes.append("company：未能解析——请补填公司名（必填）")

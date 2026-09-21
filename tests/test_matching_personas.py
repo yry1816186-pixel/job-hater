@@ -141,7 +141,7 @@ def test_java_backend_persona(env):
     assert java.eligible, [g for g in java.gate_reasons if not g.passed]
     assert java.rank_score >= 70
     assert java.dims["skill_match"].score >= 60
-    assert java.verdict in ("推荐", "可考虑")
+    assert java.verdict in ("强烈推荐", "推荐", "可考虑")  # 四档结论（v2.1）
 
     campus = scored["AI产品设计培训生（2027届校招）"]
     assert not campus.eligible  # 社招偏好：校招批次不合格（透明原因）

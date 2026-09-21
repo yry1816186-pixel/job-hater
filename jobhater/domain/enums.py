@@ -83,28 +83,42 @@ class ApplicationStatus(StrEnum):
     CLOSED = "closed"
 
 
-# 状态机：允许的单步转移（防止伪造生命周期，如未确认投递直接 offer）
+# 状态机：允许的转移。
+# 设计原则（诚实语义优先，操作摩擦最小化）：
+# 1. 准备漏斗（discovered→saved→shortlisted→preparing→materials_ready→ready_to_apply）
+#    允许向前跳步——后置状态在语义上蕴含前置步骤已完成，审计流记录实际 from→to；
+# 2. applied_confirmed 不在转移表中：只能经 confirm_applied 的用户确认门进入
+#    （事件带 user_confirmed 标记），通用 transition 一律拒绝；
+# 3. 投后状态（assessment/interviewing/offer/rejected）只能从 applied_confirmed 链到达，
+#    防止伪造生命周期（未确认投递直接 offer）。
 APPLICATION_TRANSITIONS: dict[ApplicationStatus, set[ApplicationStatus]] = {
     ApplicationStatus.DISCOVERED: {
-        ApplicationStatus.SAVED, ApplicationStatus.REJECTED, ApplicationStatus.CLOSED,
+        ApplicationStatus.SAVED, ApplicationStatus.SHORTLISTED,
+        ApplicationStatus.PREPARING, ApplicationStatus.MATERIALS_READY,
+        ApplicationStatus.READY_TO_APPLY,
+        ApplicationStatus.REJECTED, ApplicationStatus.CLOSED,
     },
     ApplicationStatus.SAVED: {
         ApplicationStatus.SHORTLISTED, ApplicationStatus.PREPARING,
+        ApplicationStatus.MATERIALS_READY, ApplicationStatus.READY_TO_APPLY,
         ApplicationStatus.WITHDRAWN, ApplicationStatus.CLOSED,
     },
     ApplicationStatus.SHORTLISTED: {
-        ApplicationStatus.PREPARING, ApplicationStatus.WITHDRAWN, ApplicationStatus.CLOSED,
+        ApplicationStatus.PREPARING, ApplicationStatus.MATERIALS_READY,
+        ApplicationStatus.READY_TO_APPLY,
+        ApplicationStatus.WITHDRAWN, ApplicationStatus.CLOSED,
     },
     ApplicationStatus.PREPARING: {
-        ApplicationStatus.MATERIALS_READY, ApplicationStatus.WITHDRAWN, ApplicationStatus.CLOSED,
+        ApplicationStatus.MATERIALS_READY, ApplicationStatus.READY_TO_APPLY,
+        ApplicationStatus.WITHDRAWN, ApplicationStatus.CLOSED,
     },
     ApplicationStatus.MATERIALS_READY: {
         ApplicationStatus.READY_TO_APPLY, ApplicationStatus.PREPARING,
         ApplicationStatus.WITHDRAWN, ApplicationStatus.CLOSED,
     },
     ApplicationStatus.READY_TO_APPLY: {
-        # 只有用户确认投递（或 adapter 可验证反馈）才进入 applied_confirmed
-        ApplicationStatus.APPLIED_CONFIRMED, ApplicationStatus.PREPARING,
+        # applied_confirmed 只经 confirm_applied（用户确认门），不在此表
+        ApplicationStatus.PREPARING,
         ApplicationStatus.WITHDRAWN, ApplicationStatus.CLOSED,
     },
     ApplicationStatus.APPLIED_CONFIRMED: {

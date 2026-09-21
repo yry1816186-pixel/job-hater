@@ -70,14 +70,22 @@ class ApplicationService:
         )
 
     def get(self, application_id: str) -> dict:
-        row = self.con.execute("SELECT * FROM applications WHERE id=?", (application_id,)).fetchone()
+        row = self.con.execute(
+            """SELECT a.*, p.title AS job_title, p.employer_name, p.city AS job_city
+                 FROM applications a LEFT JOIN job_postings p ON p.id = a.job_id
+                 WHERE a.id=?""",
+            (application_id,),
+        ).fetchone()
         if not row:
             raise LifecycleError(f"投递记录不存在: {application_id}")
         return dict(row)
 
     def list(self, profile_id: str) -> list[dict]:
         rows = self.con.execute(
-            "SELECT * FROM applications WHERE profile_id=? ORDER BY updated_at DESC", (profile_id,)
+            """SELECT a.*, p.title AS job_title, p.employer_name, p.city AS job_city
+                 FROM applications a LEFT JOIN job_postings p ON p.id = a.job_id
+                 WHERE a.profile_id=? ORDER BY a.updated_at DESC""",
+            (profile_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -86,20 +94,24 @@ class ApplicationService:
     ) -> dict:
         current = self.get(application_id)
         cur_s, to_s = ApplicationStatus(current["status"]), ApplicationStatus(to_status)
+        if to_s == ApplicationStatus.APPLIED_CONFIRMED:
+            # 诚实语义（§投递生命周期）：applied_confirmed 只能经 confirm_applied 的
+            # 用户确认门进入（事件带 user_confirmed 标记），通用转移一律拒绝。
+            raise LifecycleError(
+                "applied_confirmed 只能经「确认已投递」入口进入（用户亲口确认），"
+                "请使用 confirm_applied"
+            )
         if to_s not in APPLICATION_TRANSITIONS[cur_s]:
-            allowed = sorted(s.value for s in APPLICATION_TRANSITIONS[cur_s])
+            allowed = sorted(s.value for s in APPLICATION_TRANSITIONS[cur_s] if s is not ApplicationStatus.APPLIED_CONFIRMED)
             raise LifecycleError(
                 f"非法状态转移 {cur_s.value} → {to_s.value}；允许的目标：{allowed}"
             )
         now = _now()
         with transaction(self.con):
-            applied_at = current["applied_at"]
-            if to_s == ApplicationStatus.APPLIED_CONFIRMED:
-                applied_at = now  # 仅用户确认的投递才记录时间
             self.con.execute(
-                """UPDATE applications SET status=?, status_updated_at=?, applied_at=?, updated_at=?
+                """UPDATE applications SET status=?, status_updated_at=?, updated_at=?
                    WHERE id=?""",
-                (to_s.value, now, applied_at, now, application_id),
+                (to_s.value, now, now, application_id),
             )
             self._event(
                 application_id, "status_change",
@@ -214,13 +226,24 @@ class ApplicationService:
             self._event(application_id, "offer_received", payload={"offer_id": offer.id})
         return offer
 
-    def list_offers(self, profile_id: str) -> list[Offer]:
+    def list_offers(self, profile_id: str) -> list[dict]:
+        """列表带岗位/公司名（ Offer 本体不含 job 信息，UI 需要可辨识的名字）。"""
         rows = self.con.execute(
-            """SELECT o.* FROM offers o JOIN applications a ON a.id = o.application_id
+            """SELECT o.*, p.title AS job_title, p.employer_name, p.city AS job_city
+                 FROM offers o
+                 JOIN applications a ON a.id = o.application_id
+                 LEFT JOIN job_postings p ON p.id = a.job_id
                  WHERE a.profile_id=? ORDER BY o.created_at""",
             (profile_id,),
         ).fetchall()
-        return [row_to_model(Offer, r, _OFFER_JSON) for r in rows]
+        out: list[dict] = []
+        for r in rows:
+            d = dict(r)
+            for field, (col, default) in _OFFER_JSON.items():
+                raw = d.pop(col)
+                d[field] = json.loads(raw) if raw is not None else default
+            out.append(d)
+        return out
 
     def set_offer_status(self, offer_id: str, status: str) -> None:
         valid = {"considering", "accepted", "declined", "expired"}

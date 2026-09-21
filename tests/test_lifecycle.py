@@ -29,13 +29,27 @@ def test_state_machine_rejects_illegal_transitions(env):
     apps = ApplicationService(con)
     app = apps.create(jid, pid)
     with pytest.raises(LifecycleError, match="非法状态转移"):
-        apps.transition(app, "offer")  # discovered → offer 不允许
+        apps.transition(app, "offer")  # discovered → offer 不允许（投后状态必须经确认门）
+    # applied_confirmed 只能经用户确认门：通用转移即使在 ready_to_apply 也拒绝
     apps.transition(app, "saved")
     apps.transition(app, "preparing")
     apps.transition(app, "materials_ready")
     apps.transition(app, "ready_to_apply")
-    final = apps.transition(app, "applied_confirmed")
+    with pytest.raises(LifecycleError, match="确认已投递"):
+        apps.transition(app, "applied_confirmed")
+    final = apps.confirm_applied(app, channel="官网")
     assert final["status"] == "applied_confirmed" and final["applied_at"]
+
+
+def test_preparation_funnel_allows_forward_skips(env):
+    """准备漏斗允许向前跳步（语义蕴含，审计流记录实际 from→to）。"""
+    con, pid, jid = env
+    apps = ApplicationService(con)
+    app = apps.create(jid, pid)
+    final = apps.transition(app, "ready_to_apply", note="万事俱备")
+    assert final["status"] == "ready_to_apply"
+    evs = apps.events(app)
+    assert evs[-1]["payload_json"].find("discovered") >= 0  # 审计流保留真实起点
 
 
 def test_confirm_applied_is_user_gate(env):
@@ -75,7 +89,8 @@ def test_interview_and_offer_flow(env):
     offer = apps.add_offer(app, base_salary_k=25, salary_months=16, city="杭州",
                            benefits=["五险一金", "餐补"], custom_dimensions={"通勤": "地铁30分钟"})
     offers = apps.list_offers(pid)
-    assert len(offers) == 1 and offers[0].salary_months == 16
+    assert len(offers) == 1 and offers[0]["salary_months"] == 16
+    assert offers[0]["job_title"] == "后端开发工程师"  # 列表自带岗位名（可辨识）
     cmp = apps.compare_offers([offer.id])
     assert cmp[0]["annual_base_k"] == 400.0
     assert cmp[0]["job_title"] == "后端开发工程师"

@@ -50,6 +50,10 @@ _HYBRID_WORDS = ["混合办公", "hybrid", " hybrid"]
 _HEADHUNTER_WORDS = ["猎头", "rpo", "招聘顾问", "人力资源服务"]
 _OUTSOURCING_WORDS = ["外包", "驻场", "劳务派遣", "人力服务"]
 
+# 无 deadline 岗位的发布超龄过期窗口（天）。数据常量：校招周期通常 1-2 月，
+# 超过 60 天未更新的岗位信息大概率已过时；宁可早标过期（可手工恢复）不可误导。
+PUBLISHED_MAX_AGE_DAYS = 60
+
 
 def _now() -> str:
     return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
@@ -428,18 +432,15 @@ class JobService:
         row = self.con.execute("SELECT * FROM job_postings WHERE id=?", (job_id,)).fetchone()
         return row_to_model(JobPosting, row, _JOB_JSON) if row else None
 
-    def search(
+    def _search_conditions(
         self,
-        query: str = "",
-        *,
-        cities: list[str] | None = None,
-        recruitment_types: list[str] | None = None,
-        statuses: list[str] | None = None,
-        near_dup_only: bool = False,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[JobPosting]:
-        """检索：FTS（中文预分词）+ 结构化过滤。query 为空时按时间倒序列举。"""
+        query: str,
+        cities: list[str] | None,
+        recruitment_types: list[str] | None,
+        statuses: list[str] | None,
+        near_dup_only: bool,
+    ) -> tuple[bool, list[str], list]:
+        """构造 search 与 count_filtered 共用的 WHERE 片段。返回 (join_fts, where, args)。"""
         where: list[str] = []
         args: list = []
         join_fts = bool(query.strip())
@@ -461,6 +462,23 @@ class JobService:
             args.extend(recruitment_types)
         if near_dup_only:
             where.append("p.extras_json LIKE '%\"near_dup_of\"%'")
+        return join_fts, where, args
+
+    def search(
+        self,
+        query: str = "",
+        *,
+        cities: list[str] | None = None,
+        recruitment_types: list[str] | None = None,
+        statuses: list[str] | None = None,
+        near_dup_only: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[JobPosting]:
+        """检索：FTS（中文预分词）+ 结构化过滤。query 为空时按时间倒序列举。"""
+        join_fts, where, args = self._search_conditions(
+            query, cities, recruitment_types, statuses, near_dup_only
+        )
         sql = (
             "SELECT p.* FROM job_postings p"
             + (" JOIN job_postings_fts ON job_postings_fts.rowid = p.rowid" if join_fts else "")
@@ -470,6 +488,26 @@ class JobService:
         )
         rows = self.con.execute(sql, (*args, limit, offset)).fetchall()
         return [row_to_model(JobPosting, r, _JOB_JSON) for r in rows]
+
+    def count_filtered(
+        self,
+        query: str = "",
+        *,
+        cities: list[str] | None = None,
+        recruitment_types: list[str] | None = None,
+        statuses: list[str] | None = None,
+        near_dup_only: bool = False,
+    ) -> int:
+        """与 search() 同口径的过滤计数（分页总数不失真）。"""
+        join_fts, where, args = self._search_conditions(
+            query, cities, recruitment_types, statuses, near_dup_only
+        )
+        sql = (
+            "SELECT COUNT(*) AS c FROM job_postings p"
+            + (" JOIN job_postings_fts ON job_postings_fts.rowid = p.rowid" if join_fts else "")
+            + (" WHERE " + " AND ".join(where) if where else "")
+        )
+        return int(self.con.execute(sql, args).fetchone()["c"])
 
     def count(self, statuses: list[str] | None = None) -> int:
         if statuses:
@@ -527,6 +565,17 @@ def _is_expired(job: JobPosting) -> bool:
     today = _today()
     if job.deadline and job.deadline < today:
         return True
+    # 发布超龄兜底（v1 经验保留）：无 deadline 的岗位不会自然过期，
+    # 超过保守窗口的按过期处理，避免陈旧岗位长期占据列表。窗口是数据常量非偏好。
+    if not job.deadline and job.published_at:
+        pub = _iso_date(job.published_at)
+        if pub:
+            try:
+                age = (dt.date.today() - dt.date.fromisoformat(pub)).days
+            except ValueError:
+                return False
+            if age > PUBLISHED_MAX_AGE_DAYS:
+                return True
     return False
 
 

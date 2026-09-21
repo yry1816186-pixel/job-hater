@@ -46,7 +46,7 @@ def test_parse_jd_text_unlabeled_fallbacks():
     assert draft.get("education") == "硕士"
     assert "40-60K" in (draft.get("salary") or "")
     assert "company" not in draft or not draft.get("company")
-    assert "company" in draft["needs_review_fields"]
+    assert "公司" in draft["needs_review_fields"]  # 用户直接阅读：中文标签
 
 
 def test_parse_jd_text_empty_rejected():
