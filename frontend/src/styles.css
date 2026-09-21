@@ -208,3 +208,115 @@ table.data td { border-bottom: 1px solid var(--line); padding: 8px 10px; vertica
   .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
   .main { padding: 18px; }
 }
+
+/* ---------- v2.1 UX 改版新增 ---------- */
+
+/* 画像切换器 */
+.profile-switcher {
+  margin: 6px 0 10px; padding: 6px 8px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: inherit;
+  font-size: 13px; max-width: 100%;
+}
+
+/* 导航分组 */
+.nav-group {
+  margin: 14px 4px 4px; font-size: 11.5px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.nav-group small { text-transform: none; letter-spacing: 0; }
+
+/* Toast */
+.toast-stack {
+  position: fixed; right: 18px; bottom: 18px; z-index: 1000;
+  display: flex; flex-direction: column; gap: 8px; max-width: 380px;
+}
+.toast {
+  padding: 10px 14px; border-radius: 8px; font-size: 13.5px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18); background: var(--surface);
+  border: 1px solid var(--line); animation: toast-in 0.18s ease-out;
+}
+.toast-success { border-color: var(--accent); }
+.toast-error { border-color: var(--danger, #c0392b); background: color-mix(in srgb, var(--danger, #c0392b) 8%, var(--surface)); }
+.toast-info { border-color: var(--line); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* 模态框 */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.42); z-index: 900;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px 20px; max-width: 560px; width: 100%; max-height: 86vh; overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+}
+.modal.confirm { max-width: 420px; }
+.modal-head { display: flex; justify-content: space-between; align-items: center; }
+.modal-head h3 { margin: 0; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.icon-btn {
+  background: none; border: none; cursor: pointer; color: var(--muted);
+  padding: 2px 6px; border-radius: 4px; font-size: 14px;
+}
+.icon-btn:hover { color: var(--danger, #c0392b); background: rgba(0,0,0,0.06); }
+
+/* 空状态（带下一步指引） */
+.empty-state {
+  text-align: center; padding: 34px 18px; border: 1px dashed var(--line);
+  border-radius: 10px; color: var(--muted); margin: 12px 0;
+}
+.empty-state .empty-icon { font-size: 30px; margin-bottom: 6px; }
+.empty-state h3 { margin: 4px 0; color: inherit; }
+.empty-state p { font-size: 13.5px; margin: 4px 0 10px; }
+
+/* CTA 卡 */
+.cta-card { border-left: 3px solid var(--accent); }
+
+/* 分步徽章与节头 */
+.step-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%; font-size: 13px; font-weight: 700;
+  background: var(--surface); border: 1px solid var(--line); color: var(--muted);
+  flex: none;
+}
+.step-badge.done { background: var(--accent); border-color: var(--accent); color: #fff; }
+.section-head { display: flex; gap: 10px; align-items: center; margin: 26px 0 10px; }
+.setup-list { list-style: none; padding-left: 0; margin: 8px 0; }
+.setup-list li { padding: 5px 0; font-size: 14px; }
+.setup-list li.done { color: var(--muted); text-decoration: line-through; }
+
+/* 结论徽章（岗位列表） */
+.verdict-chip { font-size: 11.5px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); }
+.verdict-chip[data-kind="good"] { color: var(--accent); border-color: var(--accent); }
+.verdict-chip[data-kind="mid"] { color: #b8860b; border-color: #b8860b; }
+.verdict-chip[data-kind="low"], .verdict-chip[data-kind="bad"] { color: var(--danger, #c0392b); border-color: var(--danger, #c0392b); }
+
+/* 看板空列与计数 */
+.board-col.empty-col { opacity: 0.45; }
+.board-col h3 .count {
+  display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 9px;
+  background: var(--surface); border: 1px solid var(--line); font-size: 11.5px;
+}
+.btn.ghost { opacity: 0.7; }
+
+/* 画像页列表行与标签删除 */
+.list-row { padding: 5px 0; font-size: 14px; }
+.tag { position: relative; }
+.tag-x {
+  margin-left: 6px; border: none; background: none; cursor: pointer;
+  color: var(--muted); font-size: 12px; padding: 0 2px;
+}
+.tag-x:hover { color: var(--danger, #c0392b); }
+
+/* 简历编辑器：编辑 + 预览双栏 */
+.resume-editor-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .resume-editor-grid { grid-template-columns: 1fr; } }
+.subcard { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
+.resume-preview { font-size: 14px; position: sticky; top: 12px; }
+.resume-preview h4 { margin: 12px 0 4px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+/* 警示框（薪资倒挂等参考信息） */
+.warn-box {
+  border: 1px solid #b8860b; background: color-mix(in srgb, #b8860b 7%, var(--surface));
+  border-radius: 8px; padding: 8px 12px; font-size: 13.5px; margin: 8px 0;
+}

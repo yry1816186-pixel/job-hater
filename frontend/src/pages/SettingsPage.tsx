@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { AIProviderInfo, JobSourceInfo } from '../types'
+import { AI_TASK_LABELS } from '../components/ui'
 
 /** 设置与隐私：AI Provider（opt-in）、信源健康、数据出境披露 */
 export default function SettingsPage() {
@@ -25,7 +26,7 @@ export default function SettingsPage() {
   useEffect(() => {
     for (const task of ['job_deep_review', 'resume_rewrite', 'cover_letter']) {
       api
-        .get<{ disclosure: string }>(`/ai/egress${new URLSearchParams({ task }).toString()}`)
+        .get<{ disclosure: string }>(`/ai/egress?${new URLSearchParams({ task }).toString()}`)
         .then((r) => setEgress((prev) => ({ ...prev, [task]: r.disclosure })))
         .catch(() => {})
     }
@@ -123,11 +124,18 @@ export default function SettingsPage() {
 
       <h2>数据出境披露（启用远程 AI 时）</h2>
       <div className="card">
-        {Object.entries(egress).map(([task, d]) => (
-          <p key={task} style={{ margin: '6px 0', fontSize: 14 }}>
-            <b>{task}</b>：{d}
-          </p>
-        ))}
+        {Object.entries(egress).length === 0 ? (
+          <p className="hint">披露信息加载失败或尚未加载——刷新页面重试。</p>
+        ) : (
+          Object.entries(egress).map(([task, d]) => (
+            <p key={task} style={{ margin: '6px 0', fontSize: 14 }}>
+              <b>{AI_TASK_LABELS[task] ?? task}</b>：{d}
+            </p>
+          ))
+        )}
+        <p className="hint" style={{ marginTop: 8 }}>
+          本地模式下以上全部显示「不会发送任何数据」。每次调用 AI 前界面会再次展示对应披露。
+        </p>
       </div>
 
       <h2>信源健康</h2>

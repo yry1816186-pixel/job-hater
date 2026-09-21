@@ -136,6 +136,10 @@ export interface Application {
   apply_channel?: string | null
   notes?: string | null
   updated_at?: string | null
+  /** 列表接口嵌岗位于（可辨识名字，替代裸 job_id） */
+  job_title?: string | null
+  employer_name?: string | null
+  job_city?: string | null
 }
 
 export interface ApplicationEvent {
@@ -164,6 +168,7 @@ export interface Offer {
 export interface OfferCompareRow extends Offer {
   job_title: string
   employer_name: string
+  job_city?: string | null
   annual_base_k: number
 }
 

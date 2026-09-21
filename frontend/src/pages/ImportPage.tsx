@@ -1,45 +1,65 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api'
 import type { PasteDraft } from '../types'
 
-/** 导入岗位：粘贴 JD（§7 通用入口，所有自动化失效时主链仍可用） */
+/** 导入岗位：粘贴 JD（通用入口，所有自动化失效时主链仍可用） */
 export default function ImportPage() {
   const [text, setText] = useState('')
   const [url, setUrl] = useState('')
   const [draft, setDraft] = useState<PasteDraft | null>(null)
+  const [parsing, setParsing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState<{ added: number; deduped: number } | null>(null)
   const [err, setErr] = useState('')
-  const [msg, setMsg] = useState('')
 
   const parse = async () => {
     setErr('')
-    setMsg('')
+    setSaved(null)
     setDraft(null)
+    setParsing(true)
     try {
       const r = await api.post<{ draft: PasteDraft }>('/import/paste', { text, url: url || null })
       setDraft(r.draft)
     } catch (e) {
       setErr((e as Error).message)
+    } finally {
+      setParsing(false)
     }
   }
 
   const save = async () => {
     if (!draft) return
     setErr('')
+    setSaving(true)
     try {
-      const r = await api.post<{ saved: { added: number; deduped_exact: number } | null }>(
-        '/import/paste',
-        { text, url: url || null, save: true },
+      // 用「用户核对后的草稿」直接入库——修正过的字段不会被重新解析覆盖
+      const r = await api.post<{ added: number; deduped_exact: number; deduped_near: number }>(
+        '/jobs/import',
+        {
+          jobs: [
+            {
+              title: draft.title,
+              company: draft.company,
+              city: draft.city || null,
+              salary: draft.salary || null,
+              education: draft.education || null,
+              experience: draft.experience || null,
+              description: text,
+              url: url || draft.url || null,
+            },
+          ],
+          source_id: 'manual',
+        },
       )
-      if (r.saved) {
-        setMsg(
-          `已入库：新增 ${r.saved.added} 条，去重跳过 ${r.saved.deduped_exact} 条。去岗位收件箱查看。`,
-        )
-        setDraft(null)
-        setText('')
-        setUrl('')
-      }
+      setSaved({ added: r.added, deduped: r.deduped_exact + r.deduped_near })
+      setDraft(null)
+      setText('')
+      setUrl('')
     } catch (e) {
       setErr((e as Error).message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -47,6 +67,8 @@ export default function ImportPage() {
     if (!draft) return
     setDraft({ ...draft, [k]: v } as PasteDraft)
   }
+
+  const missing = [!draft?.title && '岗位标题', !draft?.company && '公司'].filter(Boolean)
 
   return (
     <div>
@@ -56,7 +78,15 @@ export default function ImportPage() {
         你确认后入库——不依赖任何平台的自动化接口。
       </p>
       {err && <div className="error-box">{err}</div>}
-      {msg && <div className="card" style={{ borderColor: 'var(--accent)' }}>{msg}</div>}
+      {saved && (
+        <div className="card cta-card">
+          <b>✓ 已入库：新增 {saved.added} 条，去重跳过 {saved.deduped} 条</b>
+          <div className="row" style={{ marginTop: 8 }}>
+            <Link className="btn primary" to="/jobs">去收件箱看匹配 →</Link>
+            <span className="hint">可以继续粘贴下一条</span>
+          </div>
+        </div>
+      )}
       <label className="field">
         JD 原文（必填，尽量完整）
         <textarea
@@ -70,8 +100,8 @@ export default function ImportPage() {
         岗位链接（可选）
         <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
       </label>
-      <button className="btn primary" onClick={parse} disabled={!text.trim()}>
-        解析为结构化草稿
+      <button className="btn primary" onClick={parse} disabled={!text.trim() || parsing}>
+        {parsing ? '解析中…' : '解析为结构化草稿'}
       </button>
 
       {draft && (
@@ -113,9 +143,12 @@ export default function ImportPage() {
           {draft.parse_notes.length > 0 && (
             <p style={{ fontSize: 12.5, color: 'var(--muted)' }}>解析依据：{draft.parse_notes.join('；')}</p>
           )}
-          <button className="btn primary" onClick={save} disabled={!draft.title || !draft.company}>
-            确认入库
-          </button>
+          <div className="row">
+            <button className="btn primary" onClick={save} disabled={!!missing.length || saving}>
+              {saving ? '入库中…' : '确认入库'}
+            </button>
+            {missing.length > 0 && <span className="hint">还缺：{missing.join('、')}</span>}
+          </div>
         </div>
       )}
     </div>
