@@ -1,91 +1,51 @@
 {
-  "mission": "把 job-hater 能考虑到的能力功能全部补齐（禁止偷懒遗漏）+ 顶尖产品团队全流程打磨（修复用户实测「完全搞不懂逻辑和交互、鸡肋」）+ 多子agent协作 + 全部收尾后设备关机",
+  "mission": "彻底最高质量完成所有的开发和优化，不再反复无用测试，允许直接复用顶尖质量的代码/思路/技术",
   "status": "accepted",
-  "generated_at": "2026-09-21T02:20:00Z（按 stop-guard 校验器 schema v2 修正）",
-  "tag": "v2.1.0",
-  "release_url": "https://github.com/yry1816186-pixel/job-hater/releases/tag/v2.1.0",
+  "generated_at": "2026-09-21T04:30:00Z",
+  "head_commit": "94270d0",
+  "tag": "v2.2.0",
+  "release_url": "https://github.com/yry1816186-pixel/job-hater/releases/tag/v2.2.0",
   "requirements": [
     {
-      "id": "R1",
-      "requirement": "能力功能尽可能全部补齐，禁止偷懒和遗漏",
+      "id": "N1",
+      "requirement": "彻底最高质量完成所有的开发和优化（前沿记录全部可执行项落地）",
       "status": "pass",
       "evidence": [
-        "4个分析子agent零遗漏审计：浏览器认知走查/spec三层接口对照/v1↔v2能力差距(19项)/前端代码级UX审计",
-        "v1差距Tier1全实现：材料工坊5生成器(services/materials.py 634行+9测试)、同义组种子/硬域封顶/薪资倒挂/发布超龄/四档结论(matching.py v2.1+5锁定测试)",
-        "spec接口缺口40+项接入：65路由(grep实测)、CLI 12命令、MCP 15工具",
-        "AI执行面(原三层全零调用方)：POST /api/ai/complete ack_egress门+GET /api/ai/tasks",
-        "benchmark: scripts/benchmark.py(597行) 20k实测+docs/PERFORMANCE.md",
-        "v1有意弃用项在COMPLETION_REPORT Replaced表明确记录，非静默丢失",
-        "验证：pytest 82 passed(独立审计逐函数清点吻合)+ruff clean+CI 3OS success(run 35551889161@fd9d2de)"
+        "F1 黄金评测集：tests/golden/matching_golden.json 22标注用例 + test_matching_golden.py 常驻（engine_version锁定）",
+        "F1 首跑抓出存量真bug并修根因：recency isdigit()守卫使ISO日期恒判未知（matching.py 修复+注释）",
+        "F4 CI质量门禁job（quality-gate）+性能金丝雀job（perf-canary，2000岗宽松阈值）——ci.yml 新增",
+        "F5 mcp 1.x/2.x双路import兼容（本地mcp 2.2.0实测2测试绿），pyproject解除<2钉版",
+        "F6 JSON Resume互操作：export_json_resume/import_json_resume + 2路由 + 往返测试5项",
+        "F9 ICS日历导出（RFC5545）：lifecycle.calendar_ics + /api/calendar/ics + 看板按钮 + 测试4项",
+        "F8 docs/SOURCES.md 插件契约文档（raw键表/去重说明/验收清单）",
+        "F7/F10/F11/F12维持triage（触发条件/reject理由已在FRONTIER_STATUS记录，无新证据触发）",
+        "验证：113 pytest全绿（+31）+ruff绿+tsc+build绿+CI success(run 35562184653@94270d0，含新job)"
       ]
     },
     {
-      "id": "R2",
-      "requirement": "修复「完全搞不懂逻辑和交互功能体验，而且非常鸡肋」",
+      "id": "N2",
+      "requirement": "不要再反复进行无用测试",
       "status": "pass",
       "evidence": [
-        "导航按业务主线分组+画像切换器+页面标题修复+404路由(App.tsx)",
-        "总览5步开始清单+新用户三步卡+画像页分步编号每节「这步影响什么」(Home/ProfilePage)",
-        "简历JSON textarea→表单化编辑+实时预览(ResumePage.tsx，前端审计P0级问题)",
-        "看板⚡一键待投递(4击→1击)+确认投递模态+Offer全字段模态+空列渲染+事件中文标签(ApplicationsPage)",
-        "全站中文标签映射(components/ui.tsx: gate12项/事件/Offer状态/AI任务)+Toast+确认框+空状态指引",
-        "4个真bug修复：SQLite跨线程500/CLI fetch NameError/披露URL漏?/导入用户修正被丢弃(数据丢失)",
-        "验证：Playwright真实浏览器端到端全链走查通过（建档→经历→偏好→91.2分强烈推荐→收藏→⚡待投递→确认投递→材料工坊134字话术+复制）；审计员对行使的每条路由/服务/前端文件逐项落地核实"
+        "开发期全部定向测试：golden单独跑/interop单独跑/ics单独跑/mcp单独跑，无一中途全量",
+        "全程仅一次全量验证（里程碑点：113 passed 20.00s，pytest+ruff+canary+tsc+build一次串完）",
+        "CI只盯一次（run 35562184653 watch到success）"
       ]
     },
     {
-      "id": "R3",
-      "requirement": "庞大项目全流程周期团队分工从头到尾规划优化",
+      "id": "N3",
+      "requirement": "允许直接复制和复用顶尖质量的代码、思路和技术",
       "status": "pass",
       "evidence": [
-        "PM：能力矩阵(4审计交叉)+执行计划(todo全程驱动)",
-        "UX：认知走查+代码级审计双轮；FE：commit 2970a06(+1826行)；BE：f7b5b51/313e5ac",
-        "QA：对抗测试19项+全量回归+3轮CI修复(3.10 StrEnum shim/dt.UTC/mcp 2.x钉版)",
-        "Docs：README关键路径/CHANGELOG 2.1.0/COMPLETION_REPORT重写/SECURITY/PERFORMANCE",
-        "Release：merge main+push+CI绿+tag v2.1.0+GitHub Release发布",
-        "验证：git log a279caf..HEAD 29 commits 全部带证据描述；最终CI run 35553012296 success@e7c3778"
-      ]
-    },
-    {
-      "id": "R4",
-      "requirement": "多开子agent协作",
-      "status": "pass",
-      "evidence": [
-        "7个分析/实现子agent：4审计+材料生成层+benchmark性能文档+安全对抗测试",
-        "实现类子agent交付全部经主agent接线路由/UI后提交(313e5ac/25b83eb/af3ef20)",
-        "对抗审计子agent发现5项真bug由主agent根因修复+xfail测试转正(82全绿)",
-        "停止钩子阶段再加2个独立agent：对抗完成度审计(verdict=SURVIVES)+前沿饱和扫描(12候选分级)"
-      ]
-    },
-    {
-      "id": "R5",
-      "requirement": "达到顶尖项目水平，真正强大靠谱好用",
-      "status": "pass",
-      "evidence": [
-        "82 pytest全绿+独立审计逐函数清点吻合(无stub/无断言绕过/无隐藏过滤/TODO零命中)",
-        "ruff全绿(jobhater+tests+scripts)+tsc零错误+vite build成功",
-        "CI 3OS矩阵(ubuntu/macos/windows×py3.10/3.12)+前端node20/22+迁移烟测+Docker构建success",
-        "安全：5项审计bug修复+curl实测(引号搜索200/穿越404/空白422)+compose端口收口127.0.0.1",
-        "性能：20k benchmark实测(合成562.8 jobs/s/检索P95 37ms/匹配批量持久化后514 jobs/s)",
-        "工作树clean，v2.1.0 tag+GitHub Release发布，独立对抗审计SURVIVES"
+        "mcp：按官方迁移指南复用2.x MCPServer路径（双路import，非自造兼容层）",
+        "JSON Resume：直接采用开放标准schema（$schema声明+官方键名映射），非私有格式",
+        "iCalendar：按RFC 5545标准实现（CRLF/转义/VALARM/VALUE=DATE），非简化自制格式",
+        "评测集方法论：复用业界labeled-eval-data+CI-gate成熟实践（数据与断言分离，版本锁定）"
       ]
     }
   ],
-  "operational_epilogue": {
-    "note": "「全部收尾后设备关机」是验收通过后的执行步骤而非验收条目：验收门通过（本文件+FRONTIER_STATUS全部ready）后，关机作为字面最后动作执行。前两次关机排程均因停止钩子要求补齐记录而主动abort——顺序纪律本身即证据。",
-    "background_services_stopped": ["uvicorn backend", "vite frontend", "playwright browser"]
-  },
   "honestly_not_done": [
-    "English i18n（中文市场产品刻意取舍，README/COMPLETION_REPORT记录为limitation）",
-    "macOS/Linux真机验证（CI矩阵覆盖）",
-    "v1#18专门的「待投递高优组合端点」（看板待投递列+总览统计覆盖同等用户价值）",
-    "mcp 2.x SDK迁移（pyproject钉<2，F5 deferred）",
-    "匹配质量黄金评测集（F1 deferred——下一迭代首位，缺失已在FRONTIER_STATUS披露为不可证伪点）"
-  ],
-  "known_deviations_fixed_during_acceptance": [
-    "README MCP工具数16→15（实测grep纠正文档失实）",
-    "test_adversarial过时xfail注释（独立审计发现→已更新）",
-    "docker-compose默认暴露面（前沿F3→已收口127.0.0.1）",
-    "rank_jobs逐岗事务（前沿F2→批量持久化431→514 jobs/s）"
+    "F7 ingest增量化（触发条件~50k岗位，真实库9.7k，PERFORMANCE.md已记录路径）",
+    "F10换存储/F11自建加密/F12盲AI扩张（reject，理由在FRONTIER_STATUS）"
   ]
 }

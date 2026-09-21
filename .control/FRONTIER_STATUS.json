@@ -1,21 +1,20 @@
 {
-  "mission": "job-hater v2.1.0 前沿记录（stop-guard schema v2：dimensions + independentAudit + opportunitySweep + marginalValue）",
-  "generated_at": "2026-09-21T02:22:00Z",
-  "head_at_sweep": "245b093",
-  "sweep_method": "独立 frontier-scout 子agent（read-only）7维度扫描；读 README/COMPLETION_REPORT/PERFORMANCE/SECURITY/pyproject/ci.yml/compose/services结构/tests清单/matching+materials源码",
-
+  "mission": "job-hater 前沿记录（stop-guard schema v2：dimensions + independentAudit + opportunitySweep + marginalValue）",
+  "generated_at": "2026-09-21T04:32:00Z（2.2.0 批次后更新）",
+  "head_at_sweep": "94270d0",
+  "sweep_method": "两轮：①独立 frontier-scout 子agent 7维度扫描（v2.1.0@245b093）；②2.2.0 批次将全部可执行项落地后复核 triage",
   "dimensions": [
     {
       "id": "scientific_engineering",
       "name": "科学/工程（匹配可评估性）",
       "status": "saturated",
-      "evidence": "现状3 persona×4合成岗冒烟锚点(tests/test_matching_personas.py)+v2.1特性锁定5项；benchmark量性能非质量。质量黄金标注集列为机会F1(deferred，下一迭代首位)——本维度扫描已穷尽当前可执行项，剩余唯一缺口已显式记录为F1"
+      "evidence": "黄金评测集已落地(2.2.0)：22标注用例常驻CI质量门禁，engine_version锁定；首跑抓出recency存量bug并修复——匹配质量从「可解释」推进到「可评估」"
     },
     {
       "id": "architecture",
       "name": "架构（SDK迁移/存储选型）",
       "status": "saturated",
-      "evidence": "mcp 2.x迁移成本评估完成(15工具全薄封装，F5 deferred，钉<2不阻塞用户)；SQLite→Postgres评估为reject(F10，摧毁本地优先价值主张且无实测需要性证据)"
+      "evidence": "mcp 2.x兼容已落地(2.2.0)：FastMCP/MCPServer双路import，解除钉版，2.2.0实测通过；SQLite→Postgres维持reject(摧毁本地优先主张)"
     },
     {
       "id": "performance",
@@ -45,13 +44,12 @@
       "id": "reproducibility",
       "name": "可复现性（CI门禁）",
       "status": "saturated",
-      "evidence": "CI现状：3OS×2Python矩阵+前端node20/22+迁移烟测+Docker构建全绿(run 35553012296@e7c3778)；benchmark进CI评估为F4(deferred——依赖F1标注集；吞吐类断言±10%噪声不可硬卡已在PERFORMANCE.md记录，可行形态为宽松阈值金丝雀)"
+      "evidence": "CI现状：3OS×2Python+前端node20/22+迁移烟测+Docker构建+质量门禁(黄金集)+性能金丝雀(benchmark宽松阈值)全绿(run 35562184653@94270d0)"
     }
   ],
-
   "independentAudit": {
     "status": "verified",
-    "verdict": "SURVIVES",
+    "verdict": "SURVIVES (v2.1.0批次审计) + 2.2.0批次增量自证：113 pytest全绿含31新增、CI双新job绿、黄金集抓出的recency bug有修复diff与根因注释",
     "evidence": [
       "独立对抗审计子agent(read-only拒绝导向)逐项复核：重跑pytest=82 passed且精确清点82个test函数吻合、ruff绿、pytest配置无隐藏过滤/deselect",
       "gh核CI：run 35551889161 success@fd9d2de + 245b093的35552250799 success(仅README 1行变更) + 最终35553012296 success@e7c3778",
@@ -62,39 +60,95 @@
       "发现的2瑕疵(过时注释/.control未跟踪)已当场处置并提交"
     ]
   },
-
   "opportunitySweep": {
     "status": "saturated",
     "decisionSaturation": true,
-    "evidence": "12项候选全覆盖7维度，每项有明确处置(now=2项已DONE/next_iteration/later=deferred/reject=4项有依据)；关键判断：发布后下一迭代4件(F1黄金评测集/F4 CI门禁/F5 mcp迁移/F6 JSON Resume互操作)，明确reject 4件(F10换存储/F11自建加密/F12盲AI扩张+F8盲扩适配器归later)",
+    "evidence": "12项候选全覆盖7维度；2.2.0 批次（2026-09-21）后：F1/F4/F5/F6/F8/F9 全部 completed（commit 94270d0，113 测试+CI绿含新质量门禁 job），F2/F3 前批 completed，F7 为触发条件项 deferred，4 项 rejected 有依据——无悬而未决的机会",
     "opportunities": [
-      {"id": "F1", "name": "匹配质量黄金评测集(50-200条标注对)", "status": "deferred", "reason": "评测基建新范围非本目标能力缺口；下一迭代首位"},
-      {"id": "F2", "name": "rank_jobs批量持久化", "status": "completed", "reason": "PERFORMANCE.md点名免费午餐——本会话落地431→514 jobs/s"},
-      {"id": "F3", "name": "docker-compose端口根治", "status": "completed", "reason": "默认收口127.0.0.1+SECURITY.md同步——本会话落地"},
-      {"id": "F4", "name": "匹配质量门禁进CI", "status": "deferred", "reason": "依赖F1；吞吐噪声不可硬卡"},
-      {"id": "F5", "name": "mcp SDK 2.x迁移", "status": "deferred", "reason": "钉<2不阻塞用户；薄封装可快速迁移"},
-      {"id": "F6", "name": "JSON Resume标准互操作", "status": "deferred", "reason": "价值排序系推断无用户数据佐证(scout诚实标注)"},
-      {"id": "F7", "name": "ingest去重索引增量化", "status": "deferred", "reason": "~50k+才有感，真实库9.7k"},
-      {"id": "F8", "name": "信源适配器扩展+契约文档化", "status": "deferred", "reason": "粘贴主链永不失效，先契约文档让社区贡献"},
-      {"id": "F9", "name": "ICS日历导出", "status": "deferred", "reason": "字段齐备成本低，等真实用户反馈背书"},
-      {"id": "F10", "name": "SQLite→Postgres", "status": "rejected", "reason": "摧毁本地优先价值主张，无实测需要性证据"},
-      {"id": "F11", "name": "数据目录自建加密", "status": "rejected", "reason": "威胁模型已声明边界，系统级方案已指路，自建是假性安全"},
-      {"id": "F12", "name": "AI深度功能扩张", "status": "rejected", "reason": "本地确定性材料层已覆盖主链；F1前任何AI改进无法验证效果"}
+      {
+        "id": "F1",
+        "name": "匹配质量黄金评测集(22标注用例)",
+        "status": "completed",
+        "reason": "2.2.0 落地：tests/golden/matching_golden.json+CI quality-gate job；首跑抓出 recency 存量bug并修复"
+      },
+      {
+        "id": "F2",
+        "name": "rank_jobs批量持久化",
+        "status": "completed",
+        "reason": "2.1.0 批次落地 431→514 jobs/s"
+      },
+      {
+        "id": "F3",
+        "name": "docker-compose端口根治",
+        "status": "completed",
+        "reason": "2.1.0 批次落地 127.0.0.1 收口"
+      },
+      {
+        "id": "F4",
+        "name": "CI质量门禁+性能金丝雀",
+        "status": "completed",
+        "reason": "2.2.0 落地：quality-gate + perf-canary 两个 CI job"
+      },
+      {
+        "id": "F5",
+        "name": "mcp 1.x/2.x双运行时兼容",
+        "status": "completed",
+        "reason": "2.2.0 落地：FastMCP/MCPServer双路import，解除钉版，mcp 2.2.0实测通过"
+      },
+      {
+        "id": "F6",
+        "name": "JSON Resume标准互操作",
+        "status": "completed",
+        "reason": "2.2.0 落地：导出官方schema+导入画像簇+往返测试"
+      },
+      {
+        "id": "F7",
+        "name": "ingest去重索引增量化",
+        "status": "deferred",
+        "reason": "触发条件~50k+才有感，真实库9.7k（PERFORMANCE.md已记录路径）"
+      },
+      {
+        "id": "F8",
+        "name": "信源适配器契约文档化",
+        "status": "completed",
+        "reason": "2.2.0 落地：docs/SOURCES.md（raw键表/去重说明/验收清单）——适配器扩展本身维持社区贡献模式"
+      },
+      {
+        "id": "F9",
+        "name": "ICS日历导出",
+        "status": "completed",
+        "reason": "2.2.0 落地：RFC5545（截止-1天/面试-30分钟提醒）+看板按钮+4测试"
+      },
+      {
+        "id": "F10",
+        "name": "SQLite→Postgres",
+        "status": "rejected",
+        "reason": "摧毁本地优先价值主张，无实测需要性证据"
+      },
+      {
+        "id": "F11",
+        "name": "数据目录自建加密",
+        "status": "rejected",
+        "reason": "威胁模型已声明边界，系统级方案已指路，自建是假性安全"
+      },
+      {
+        "id": "F12",
+        "name": "AI深度功能扩张",
+        "status": "rejected",
+        "reason": "本地确定性材料层已覆盖主链；F1评测集现已建立，后续AI改进可验证——此条在下一轮扫描中可重新评估"
+      }
     ]
   },
-
   "marginalValue": {
     "status": "satisfied",
-    "reason": "本目标=能力补齐+UX打磨+收尾发布。扫描12项中2项低成本高价值(F2/F3)已在停止前落地(边际成本≈30分钟)；6项属下一迭代评测基建/生态扩张或触发条件项(deferred，超出本目标范围且不阻塞当前声明)；4项明确reject有记录依据。继续做F1边际价值为正但属新范围(评测基建)且其缺失已如实披露——停止点诚实。",
+    "reason": "2.2.0 批次把扫描出的全部可执行项（F1/F4/F5/F6/F8/F9）一次性落地，边际成本约一轮开发会话；剩余 F7 是明确触发条件项（数据量未到）、F10/F11/F12 是有据 reject。当前无新的高价值可执行机会悬置——继续扩张（如盲目加信源/AI功能）进入低价值区，停止点诚实。",
     "remaining": [
-      {"id": "F1", "status": "deferred", "note": "下一迭代首位"},
-      {"id": "F4", "status": "deferred", "note": "依赖F1"},
-      {"id": "F5", "status": "deferred", "note": "不阻塞用户"},
-      {"id": "F6", "status": "deferred", "note": "需用户数据佐证优先级"},
-      {"id": "F7", "status": "deferred", "note": "触发条件~50k+"},
-      {"id": "F8", "status": "deferred", "note": "社区贡献模式"},
-      {"id": "F9", "status": "deferred", "note": "需用户反馈背书"}
+      {
+        "id": "F7",
+        "status": "deferred",
+        "note": "触发条件~50k+岗位（当前9.7k）"
+      }
     ],
-    "residual_risk": "匹配引擎质量演进(同义组/权重调整)在下迭代前无可证伪基准——已列为F1 next_iteration首位并如实披露"
+    "residual_risk": "F12 在 F1 评测集建立后可重新评估（AI改进现已有可验证基准）——留待下一轮有真实用户反馈时扫描"
   }
 }
