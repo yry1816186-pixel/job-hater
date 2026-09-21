@@ -90,7 +90,7 @@ job-hater fetch --companies mihoyo        # 官网信源抓取（米哈游/百�
 | 文件导入 | JSON（数组或 `{"jobs":[...]}`） | ✅ |
 | 校招官网适配器 | `job-hater fetch --companies mihoyo,baidu,netease`（米哈游/百度/网易校招官网公开 JSON API，来自 MIT 项目 wenke-radar 的移植，限速抓取） | ✅ 已接入 |
 | 官方 API 适配器 | `SourceAdapter` 插件契约（capabilities/health_check/rate_policy/provenance） | 契约就绪，适配器按源渐进接入 |
-| MCP | `job-hater-mcp`（16 个工具，官方 SDK） | ✅ Agent 增强层 |
+| MCP | `job-hater-mcp`（15 个工具，官方 SDK） | ✅ Agent 增强层 |
 
 导入统一走分层去重：同源同 ID → 跨源同岗键 → 近似标题（标记人工复核）→ 内容指纹。每条岗位保留原始快照与来源。
 
