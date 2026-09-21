@@ -15,6 +15,6 @@ try:
 
     __version__ = _pkg_version("jobhater")
 except PackageNotFoundError:  # pragma: no cover - 仅未安装场景
-    __version__ = "2.3.0"
+    __version__ = "3.0.0"
 
 APP_NAME = "job-hater"

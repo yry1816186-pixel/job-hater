@@ -277,6 +277,70 @@ def materials_interview_questions(profile_id: str, job_id: str) -> str:
         con.close()
 
 
+@mcp.tool()
+def stats_overview(profile_id: str = "") -> str:
+    """求职漏斗与洞察（确定性聚合）：漏斗转化/周活动/健康度/渠道效果/Top雇主。"""
+    con = _con()
+    try:
+        from jobhater.services.stats import StatsService
+
+        out = StatsService(con).overview(profile_id or None)
+        return json.dumps(out, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        con.close()
+
+
+@mcp.tool()
+def stats_salary(city: str = "") -> str:
+    """薪资分位洞察（本地库样本 p25/p50/p75；样本数随行，<5 不具参考性）。"""
+    con = _con()
+    try:
+        from jobhater.services.stats import StatsService
+
+        out = StatsService(con).salary_insights(city=city or None)
+        return json.dumps(out, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        con.close()
+
+
+@mcp.tool()
+def ats_scan(job_id: str, resume_version_id: str) -> str:
+    """ATS 简历-JD 匹配报告（确定性）：分数/硬软技能覆盖/缺失词/证据链/反堆砌提醒。"""
+    con = _con()
+    try:
+        from jobhater.services.ats_scan import ATSScanService
+
+        out = ATSScanService(con).scan(job_id, resume_version_id)
+        return json.dumps(out, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        con.close()
+
+
+@mcp.tool()
+def reminders_list(profile_id: str = "", include_done: bool = False) -> str:
+    """提醒列表（可选含已完成）+ 确定性跟进建议（建议不落库）。"""
+    con = _con()
+    try:
+        from jobhater.services.reminders import RemindersService
+
+        rs = RemindersService(con)
+        out = {
+            "reminders": rs.list(include_done=include_done),
+            "suggestions": rs.suggestions(profile_id=profile_id or None),
+        }
+        return json.dumps(out, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        con.close()
+
+
 def main() -> None:
     apply_all()
     mcp.run()

@@ -155,3 +155,36 @@ AI 调用失败的错误消息只含 provider 地址与 HTTP 异常文本，不�
 - 明文 SQLite：数据目录不做额外加密（威胁模型内）；如需静态加密请用系统级方案（如 BitLocker/FileVault）。
 - 无 CORS 头 + API 无认证：浏览器同源策略之外的攻击面（DNS rebinding）理论上可行——
   本机单人使用不受影响；暴露到网络前请先解决认证。
+
+## 3.0.0 新攻击面评估（浏览器扩展 / 备份恢复 / 设置 KV / ATS 报告）
+
+### 浏览器扩展（`extension/`，MV3）
+- **权限最小化**：`activeTab`（仅当前标签页，点击扩展时才授权）+ `scripting`
+  （按需注入内容脚本）+ `storage`（记住 API 地址/画像选择）。没有 `tabs`、
+  没有 `<all_urls>` 常驻内容脚本、没有 webRequest。
+- **网络面**：`host_permissions` 仅 `127.0.0.1` / `localhost`；扩展内所有 fetch
+  只指向本机 Job Hater。页面数据只在用户点击「抓取」时读取一次并直发本机 API。
+- **永不提交**：表单填充只写可见输入框并高亮，不触发 submit；密码框/文件框/
+  隐藏框在填充扫描中显式排除（`content/assistant.js` 的选择器）。
+- **残留风险（如实）**：恶意页面理论上可在填充瞬间读取被填入的值——因此填充
+  内容只含画像基础字段（姓名/联系方式/学校），不含身份证号、家庭情况等高敏
+  字段；这类字段按设计**不进画像、不参与填充**。
+
+### 备份恢复（`services/backup.py`）
+- 恢复三重校验（SQLite 文件头 / `PRAGMA integrity_check` / `schema_migrations`
+  版本与当前库一致）后才用 SQLite 在线备份 API 原位替换；任一失败抛
+  `BackupError`，原库分毫不动。恢复后另跑 `foreign_key_check` 复核。
+- 校验防止：任意文件上传打穿解析器、旧 schema 备份降级运行、半截文件损坏库。
+- 备份文件包含全部业务数据（含联系方式等 PII）——README 明示妥善保管；
+  API Key 不在备份内（keyring 独立于数据库）。
+
+### 设置 KV（`services/settings.py`）
+- 值是任意 JSON、永不外发；单键损坏回退默认值不炸全局（设置是可丢偏好非事实）。
+- 已知键集中在 `KNOWN_KEYS` 登记（theme/saved_searches/jobs_last_seen_at…），
+  未知键保留不删（向前兼容）。
+
+### ATS 报告与面试练习器
+- ATS 报告（`services/ats_scan.py`）纯本地确定性计算，零网络。
+- 面试逐字稿只存本地库，与简历/证据同级隐私（不进日志全文）；AI 复盘走
+  `/api/ai/complete` 同一 ack_egress 门（428 + 披露 → 用户确认），本地模式
+  返回 `executed=false` 降级说明，不静默降级也不伪造结果。

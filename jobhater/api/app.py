@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Job Hater", version="2.2.0", lifespan=lifespan)
+    app = FastAPI(title="Job Hater", version="3.0.0", lifespan=lifespan)
     from jobhater.api.routes import register_routes  # 延迟导入避免环
 
     register_routes(app)
