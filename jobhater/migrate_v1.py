@@ -8,6 +8,13 @@
 - v1 blacklist 语义是"已投递防重复"（§15 已废除）→ 不迁移为 user_blocked，仅记录数量；
 - v1 jobs.status=rejected 是旧校招规则的拒绝 → 保留 rejected 状态与原因，透明可查；
 - v1 的 skills.evidence / experience_ev_map → evidence 表（source_kind=paste）。
+
+v1 字段映射说明（profile.json 实际 schema）：
+- experience 条目的 name/highlights 无 v2 专用列 → 合并写入 description（内容不丢，结构降级）；
+- experience 的证据链接在顶层 experience_ev_map（不在条目内）→ 经 ev_id_map 映射到 evidence_ids；
+- education.gpa 形如 "3.8/5.0" → 拆出数值 gpa，原文留 gpa_note；
+- evidence_index 文本的类目前缀（"教育背景："等，v1 系统固定书写约定）→ fact_type 分类；
+- awards 条目的 level/work/year → Award.level/description/date。
 """
 from __future__ import annotations
 
@@ -15,11 +22,41 @@ import json
 from pathlib import Path
 
 from jobhater.db import apply_all, connect
-from jobhater.domain.enums import EvidenceSourceKind
+from jobhater.domain.enums import EvidenceSourceKind, FactType
 from jobhater.services.jobs import JobService
 from jobhater.services.profile import ProfileService
 
 _LEVEL_MAP = {"了解": 1, "熟悉": 2, "熟练": 3, "掌握": 3, "精通": 4, "专家": 5}
+
+# v1 evidence_index 文本的类目前缀（v1 系统生成时的固定书写约定）→ FactType
+_V1_EVIDENCE_PREFIX_FACT_TYPE: list[tuple[str, FactType]] = [
+    ("教育背景", FactType.EDUCATION),
+    ("科研经历", FactType.EXPERIENCE),
+    ("项目经验", FactType.PROJECT),
+    ("竞赛获奖", FactType.AWARD),
+    ("荣誉", FactType.AWARD),
+    ("校园经历", FactType.EXPERIENCE),
+    ("技能与自我评价", FactType.SKILL),
+]
+
+
+def _infer_fact_type(text: str) -> FactType | None:
+    for prefix, ft in _V1_EVIDENCE_PREFIX_FACT_TYPE:
+        if text.startswith(prefix):
+            return ft
+    return None
+
+
+def _parse_gpa(v) -> tuple[float | None, str | None]:
+    """v1 gpa 形如 "3.8/5.0" → (3.8, "3.8/5.0")；纯数字 → (float, None)。"""
+    s = str(v or "").strip()
+    if not s:
+        return None, None
+    head = s.split("/", 1)[0].strip()
+    try:
+        return float(head), s
+    except ValueError:
+        return None, s
 
 
 def _date(v) -> str | None:
@@ -46,15 +83,21 @@ def migrate(old_data_dir: Path | str, db_path: Path | str | None = None) -> dict
             v1p = json.loads(profile_file.read_text(encoding="utf-8"))
             identity = v1p.get("identity", {})
             name = identity.get("name") or identity.get("display_name") or "迁移用户"
-            profile = ps.create_profile(name, headline=identity.get("headline"))
+            profile = ps.create_profile(
+                name, headline=identity.get("headline"),
+                phone=identity.get("phone"), email=identity.get("email"),
+            )
             pid = profile.id
 
             ev_id_map: dict[str, str] = {}
             ev_index: dict[str, str] = v1p.get("evidence_index", {})
             for old_ev_id, text in ev_index.items():
+                if old_ev_id.startswith("_"):  # _source_files 等是元数据键，不是证据
+                    continue
                 ev = ps.add_evidence(
                     pid, str(text), source_kind=EvidenceSourceKind.PASTE,
                     normalized_fact=str(text)[:200], user_confirmed=True,
+                    fact_type=_infer_fact_type(str(text)),
                 )
                 ev_id_map[old_ev_id] = ev.id
             report["profile"] = {
@@ -63,11 +106,19 @@ def migrate(old_data_dir: Path | str, db_path: Path | str | None = None) -> dict
             }
 
             for e in v1p.get("education", []):
+                school = e.get("school", "")
+                gpa_val, gpa_note = _parse_gpa(e.get("gpa"))
+                edu_ev = [
+                    ev_id_map[old_id]
+                    for old_id, text in ev_index.items()
+                    if old_id in ev_id_map and school and school in str(text)
+                ]
                 ps.add_education(
-                    pid, school=e.get("school", ""),
+                    pid, school=school,
                     degree=e.get("degree"), major=e.get("major"),
                     start_date=_date(e.get("start")), end_date=_date(e.get("end")),
-                    gpa=None, gpa_note=str(e.get("gpa") or "") or None,
+                    gpa=gpa_val, gpa_note=gpa_note,
+                    evidence_ids=edu_ev,
                 )
             for s in v1p.get("skills", []):
                 ps.add_skill(
@@ -75,21 +126,36 @@ def migrate(old_data_dir: Path | str, db_path: Path | str | None = None) -> dict
                     level=_LEVEL_MAP.get(str(s.get("level", "")), None),
                     aliases=[], evidence_ids=[ev_id_map[x] for x in s.get("evidence", []) if x in ev_id_map],
                 )
+            ev_map_v1: dict[str, str] = v1p.get("experience_ev_map", {})
             for x in v1p.get("experiences", []):
+                # v1 条目自带 name + highlights（正文亮点），v2 无专用列 → 合并进 description
+                desc_parts: list[str] = []
+                if x.get("name"):
+                    desc_parts.append(str(x["name"]))
+                for h in x.get("highlights", []) or []:
+                    desc_parts.append(str(h))
+                if x.get("description"):
+                    desc_parts.append(str(x["description"]))
+                old_ev_ids = list(x.get("evidence", []))
+                mapped = ev_map_v1.get(x.get("id"))
+                if mapped and mapped not in old_ev_ids:
+                    old_ev_ids.append(mapped)
                 ps.add_experience(
                     pid, employer=x.get("employer", x.get("org", "")),
                     title=x.get("title", x.get("role", "")),
                     kind=x.get("kind", "internship" if x.get("is_internship") else "full_time"),
                     start_date=_date(x.get("start")), end_date=_date(x.get("end")),
-                    description=x.get("description"),
+                    description="\n".join(desc_parts) or None,
                     tags=list(x.get("tags", [])),
-                    evidence_ids=[ev_id_map[t] for t in x.get("evidence", []) if t in ev_id_map],
+                    evidence_ids=[ev_id_map[t] for t in old_ev_ids if t in ev_id_map],
                 )
             for a in v1p.get("awards", []) + v1p.get("honors", []):
                 if isinstance(a, dict):
+                    year = a.get("year")
                     ps.add_award(
                         pid, name=a.get("name", a.get("title", "")),
-                        issuer=a.get("issuer"), date=_date(a.get("date")),
+                        issuer=a.get("issuer"), date=_date(a.get("date")) or (str(year) if year else None),
+                        level=a.get("level"), description=a.get("work"),
                     )
             prefs = v1p.get("preferences", {})
             if prefs:

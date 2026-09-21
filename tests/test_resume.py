@@ -144,3 +144,50 @@ def test_renders_and_export_degradation(env, tmp_path):
     if not have_pw:
         with pytest.raises(ResumeError, match="playwright"):
             rs.export_file(vid, "pdf")
+
+
+def test_render_markdown_multiline_summary_and_empty_label(env):
+    """迁移合并后的 summary 是多行文本；空 label 不得输出孤立星号。"""
+    con, pid, _ = env
+    rs = ResumeService(con)
+    from jobhater.services.profile import ProfileService as PS
+
+    PS(con).add_experience(
+        pid, employer="某项目组", title="核心开发", description="第一行亮点\n第二行亮点",
+        start_date="2026-01", end_date="2026-06",
+    )
+    _, vid2 = rs.build_master_from_profile(pid)
+    md = rs.render_markdown(vid2)
+    assert "- 第一行亮点" in md and "- 第二行亮点" in md  # 逐行成 bullet，不挤一行
+    assert not any(ln.strip() in ("*", "**") for ln in md.splitlines())
+    html = rs.render_html(vid2)
+    assert "<li>第一行亮点</li>" in html and "<li>第二行亮点</li>" in html
+
+
+def test_render_includes_contacts_and_strips_citations(env):
+    """联系方式进 MD/HTML/JSON Resume 头部；内部引用标记 [ev:...] 不出现在人面输出。"""
+    con, pid, (ev1, _) = env
+    from jobhater.services.profile import ProfileService as PS
+
+    ps = PS(con)
+    ps.update_profile(pid, phone="13800000000", email="lin@example.com")
+    rs = ResumeService(con)
+    rid, vid = rs.build_master_from_profile(pid)
+    # 给一条 bullet 附加显式引用标记（factcheck 认、渲染不外显）
+    sections = rs.get_version(vid)["sections"]
+    sections["work"][0]["highlights"] = [f"主导改版，满意度提升 12% [ev:{ev1}]"]
+    vid2 = rs.commit_version(rid, sections)
+
+    md = rs.render_markdown(vid2)
+    assert "13800000000" in md and "lin@example.com" in md
+    assert "[ev:" not in md and "主导改版，满意度提升 12%" in md
+    html = rs.render_html(vid2)
+    assert "13800000000" in html and "[ev:" not in html
+
+    jr = rs.export_json_resume(vid2)
+    assert jr["basics"]["email"] == "lin@example.com"
+    assert jr["basics"]["phone"] == "13800000000"
+    assert all("[ev:" not in h for h in jr["work"][0]["highlights"])
+    # 溯源不丢：内部版本仍保留标记与证据扩展字段
+    assert "[ev:" in rs.get_version(vid2)["sections"]["work"][0]["highlights"][0]
+    assert rs.get_version(vid2)["sections"]["work"][0]["evidence_ids"]

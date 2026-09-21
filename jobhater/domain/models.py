@@ -31,6 +31,8 @@ class CandidateProfile(_Model):
     display_name: str
     headline: str | None = None
     summary: str | None = None
+    phone: str | None = None
+    email: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
 

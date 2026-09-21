@@ -55,15 +55,16 @@ class ProfileService:
 
     # ---------- 画像 ----------
 
-    def create_profile(self, display_name: str, headline: str | None = None) -> CandidateProfile:
+    def create_profile(
+        self, display_name: str, headline: str | None = None,
+        *, phone: str | None = None, email: str | None = None,
+    ) -> CandidateProfile:
         profile = CandidateProfile(
-            id=new_id("prof"), display_name=display_name, headline=headline
+            id=new_id("prof"), display_name=display_name, headline=headline,
+            phone=phone, email=email,
         )
         with transaction(self.con):
-            self.con.execute(
-                "INSERT INTO candidate_profiles(id, display_name, headline) VALUES (?,?,?)",
-                (profile.id, profile.display_name, profile.headline),
-            )
+            insert_model(self.con, "candidate_profiles", profile, {})
         return profile
 
     def get_profile(self, profile_id: str) -> CandidateProfile | None:
@@ -71,6 +72,29 @@ class ProfileService:
             "SELECT * FROM candidate_profiles WHERE id=?", (profile_id,)
         ).fetchone()
         return row_to_model(CandidateProfile, row, {}) if row else None
+
+    def update_profile(
+        self, profile_id: str, *, headline: str | None = None,
+        phone: str | None = None, email: str | None = None,
+    ) -> CandidateProfile:
+        """部分更新可变字段（headline/phone/email）；姓名是画像身份，不在此改动。
+        传 None 的字段保持原值——清空联系方式请传空串。"""
+        current = self.get_profile(profile_id)
+        if current is None:
+            raise KeyError(f"画像不存在: {profile_id}")
+        updates = {
+            k: v for k, v in {"headline": headline, "phone": phone, "email": email}.items()
+            if v is not None
+        }
+        if updates:
+            with transaction(self.con):
+                self.con.execute(
+                    "UPDATE candidate_profiles SET "
+                    + ",".join(f"{k}=?" for k in updates)
+                    + ", updated_at=? WHERE id=?",
+                    (*updates.values(), _now_sql(), profile_id),
+                )
+        return self.get_profile(profile_id)
 
     def update_profile_headline(self, profile_id: str, headline: str) -> None:
         """只更新一句话介绍（导入材料补全用）；姓名是画像身份，不在此改动。"""

@@ -22,7 +22,7 @@ from jobhater.db.connection import transaction
 from jobhater.domain.models import DimensionScore, GateOutcome, JobPosting, MatchOutcome
 from jobhater.services.profile import degree_rank
 
-ENGINE_VERSION = "2.1.0"
+ENGINE_VERSION = "2.2.1"  # 2.2.1: 修复批量相关性 BM25 恒空（词组间 AND→OR）；维度/gate 语义不变
 
 # 维度默认权重与结论阈值——"数据层默认"而非代码铁律：用户在 preset.weights 可全量覆盖。
 DEFAULT_WEIGHTS: dict[str, float] = {
@@ -230,8 +230,12 @@ def eligibility_gates(
 def _bm25_scores(
     con: sqlite3.Connection, terms: list[str], limit: int = 500
 ) -> dict[int, float]:
-    """对 FTS 查询返回 {rowid: 归一化 bm25 信号 0-100}。无词项时返回空。"""
-    expr = tp.fts_query(terms)
+    """对 FTS 查询返回 {rowid: 归一化 bm25 信号 0-100}。无词项时返回空。
+
+    joiner=" OR "：terms 是多路同义信号（目标角色+核心技能），命中任一即参与排序；
+    AND 语义下没有任何文档能同时满足全部词组，恒空集（v2.1.0 及之前的相关性恒 None bug）。
+    """
+    expr = tp.fts_query(terms, joiner=" OR ")
     if not expr.strip():
         return {}
     try:

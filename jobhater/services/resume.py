@@ -73,6 +73,8 @@ class ResumeService:
                 "name": profile.display_name,
                 "label": profile.headline or "",
                 "summary": profile.summary or "",
+                "phone": profile.phone or "",
+                "email": profile.email or "",
             },
             "work": [
                 {
@@ -308,25 +310,34 @@ class ResumeService:
     def render_markdown(self, version_id: str) -> str:
         s = self.get_version(version_id)["sections"]
         b = s.get("basics") or {}
-        lines = [f"# {b.get('name', '')}", f"*{b.get('label', '')}*", ""]
+        lines = [f"# {b.get('name', '')}"]
+        if b.get("label"):
+            lines.append(f"*{b['label']}*")
+        contact = " ｜ ".join(x for x in (b.get("email"), b.get("phone")) if x)
+        if contact:
+            lines.append(contact)
+        lines.append("")
         if b.get("summary"):
-            lines += [b["summary"], ""]
+            lines += [strip_citations(b["summary"]), ""]
         if s.get("work"):
             lines.append("## 工作与实习经历")
             for w in s["work"]:
                 dates = f'{w.get("startDate", "")} – {w.get("endDate", "")}'.strip(" –")
                 lines.append(f"### {w.get('position', '')} · {w.get('name', '')}　{dates}")
-                if w.get("summary"):
-                    lines.append(f"- {w['summary']}")
+                # summary 可能含多行（迁移合并/用户粘贴的完整段落）→ 逐行成 bullet，与 highlights 同形
+                for ln in str(w.get("summary") or "").splitlines():
+                    if ln.strip():
+                        lines.append(f"- {strip_citations(ln)}")
                 for h in w.get("highlights") or []:
-                    lines.append(f"- {h}")
+                    lines.append(f"- {strip_citations(h)}")
                 lines.append("")
         if s.get("projects"):
             lines.append("## 项目经历")
             for p in s["projects"]:
                 lines.append(f"### {p.get('name', '')}" + (f"（{p['role']}）" if p.get("role") else ""))
-                if p.get("description"):
-                    lines.append(f"- {p['description']}")
+                for ln in str(p.get("description") or "").splitlines():
+                    if ln.strip():
+                        lines.append(f"- {strip_citations(ln)}")
                 lines.append("")
         if s.get("education"):
             lines.append("## 教育背景")
@@ -356,7 +367,7 @@ class ResumeService:
             md_blocks.append(f"<h2>{_esc(t)}</h2>")
 
         if b.get("summary"):
-            md_blocks.append(f"<p class='summary'>{_esc(b['summary'])}</p>")
+            md_blocks.append(f"<p class='summary'>{_esc(strip_citations(b['summary']))}</p>")
         if s.get("work"):
             h2("工作与实习经历")
             for w in s["work"]:
@@ -366,8 +377,12 @@ class ResumeService:
                     f"<span class='item-title'>{_esc(w.get('position', ''))}</span>"
                     f"<span class='item-sub'>{_esc(w.get('name', ''))}</span>"
                     f"<span class='item-date'>{dates}</span></div>"
-                    + (f"<p>{_esc(w['summary'])}</p>" if w.get("summary") else "")
-                    + "".join(f"<li>{_esc(x)}</li>" for x in (w.get("highlights") or []))
+                    # summary 可能含多行（迁移合并/粘贴段落）→ 与 highlights 同样逐行成列表项
+                    + "".join(
+                        f"<li>{_esc(strip_citations(ln))}</li>"
+                        for ln in str(w.get("summary") or "").splitlines() if ln.strip()
+                    )
+                    + "".join(f"<li>{_esc(strip_citations(x))}</li>" for x in (w.get("highlights") or []))
                     + "</div>"
                 )
         if s.get("projects"):
@@ -377,7 +392,10 @@ class ResumeService:
                     f"<div class='item'><div class='item-head'>"
                     f"<span class='item-title'>{_esc(p.get('name', ''))}</span>"
                     f"<span class='item-sub'>{_esc(p.get('role', ''))}</span></div>"
-                    + (f"<p>{_esc(p['description'])}</p>" if p.get("description") else "")
+                    + "".join(
+                        f"<li>{_esc(strip_citations(ln))}</li>"
+                        for ln in str(p.get("description") or "").splitlines() if ln.strip()
+                    )
                     + "</div>"
                 )
         if s.get("education"):
@@ -405,8 +423,10 @@ class ResumeService:
                 ) + "</ul>"
             )
         body = "\n".join(md_blocks)
+        contact = " ｜ ".join(x for x in (b.get("email"), b.get("phone")) if x)
         return HTML_TEMPLATE.format(
-            name=_esc(b.get("name", "")), label=_esc(b.get("label", "")), body=body
+            name=_esc(b.get("name", "")), label=_esc(b.get("label", "")),
+            contact=_esc(contact), body=body,
         )
 
     # ---------- JSON Resume 开放标准互操作（https://jsonresume.org/schema） ----------
@@ -422,7 +442,9 @@ class ResumeService:
             "basics": {
                 "name": basics.get("name", ""),
                 "label": basics.get("label", ""),
-                "summary": basics.get("summary", ""),
+                "summary": strip_citations(basics.get("summary", "") or ""),
+                "email": basics.get("email", "") or "",
+                "phone": basics.get("phone", "") or "",
             },
             "work": [
                 {
@@ -430,8 +452,8 @@ class ResumeService:
                     "position": w.get("position", ""),
                     "startDate": w.get("startDate", "") or "",
                     "endDate": w.get("endDate", "") or "",
-                    "summary": w.get("summary", "") or "",
-                    "highlights": list(w.get("highlights") or []),
+                    "summary": strip_citations(w.get("summary", "") or ""),
+                    "highlights": [strip_citations(h) for h in (w.get("highlights") or [])],
                     "_evidence_ids": list(w.get("evidence_ids") or []),
                 }
                 for w in s.get("work") or []
@@ -453,7 +475,7 @@ class ResumeService:
                     "name": p.get("name", ""),
                     "role": p.get("role", "") or "",
                     "url": p.get("url", "") or "",
-                    "description": p.get("description", "") or "",
+                    "description": strip_citations(p.get("description", "") or ""),
                     "startDate": p.get("startDate", "") or "",
                     "endDate": p.get("endDate", "") or "",
                     "_evidence_ids": list(p.get("evidence_ids") or []),
@@ -637,6 +659,12 @@ def _esc(s: str) -> str:
     )
 
 
+def strip_citations(text: str) -> str:
+    """人面渲染/导出时移除内部引用标记 [ev:...]——溯源保留在 bullets_provenance
+    与 evidence_ids 扩展字段里，不出现在交给 HR 的文本中。"""
+    return CITE_RE.sub("", str(text)).strip()
+
+
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -653,6 +681,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   h1 {{ font-family: "Source Han Serif SC", "Noto Serif CJK SC", "SimSun", serif;
        font-size: 22pt; letter-spacing: 2pt; }}
   .label {{ color: var(--muted); margin-top: 2pt; font-size: 11pt; }}
+  .contact {{ color: var(--muted); margin-top: 3pt; font-size: 10pt; }}
   h2 {{ font-size: 12.5pt; letter-spacing: 1pt; color: var(--accent);
        border-bottom: 0.8pt solid var(--line); padding-bottom: 2pt; margin: 12pt 0 6pt; }}
   .item {{ margin-bottom: 8pt; page-break-inside: avoid; }}
@@ -668,7 +697,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<header><h1>{name}</h1><div class="label">{label}</div></header>
+<header><h1>{name}</h1><div class="label">{label}</div><div class="contact">{contact}</div></header>
 {body}
 </body>
 </html>

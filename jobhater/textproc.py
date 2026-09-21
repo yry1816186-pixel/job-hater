@@ -64,12 +64,14 @@ def tokenize_for_fts(text: str | None) -> str:
     return " ".join(tokens + bigrams)
 
 
-def fts_query(terms: list[str]) -> str:
+def fts_query(terms: list[str], *, joiner: str = " AND ") -> str:
     """用户查询词 → FTS5 MATCH 表达式。
 
-    词间 AND、词内子片段 OR：同一查询词经分词产生的多个 token（如「机械设计」
+    词间默认 AND、词内子片段 OR：同一查询词经分词产生的多个 token（如「机械设计」
     → 机械设计/机械/设计，随分词器而异）之间是同义展开而非并列条件——
     文档命中任一子片段即算命中该词，由 BM25 决定强弱。
+    相关性打分场景传 joiner=" OR "：候选词是「多路同义信号」，命中任一词组即应
+    参与排序（AND 语义下没有任何文档能同时满足全部词组 → 恒空集）。
 
     token 内的半角双引号按 FTS5 语法成对转义（"→""），防止拼接出
     unterminated string；纯标点 token（转义后仅引号）直接丢弃。
@@ -88,7 +90,7 @@ def fts_query(terms: list[str]) -> str:
         if not toks:
             continue
         groups.append(f"({' OR '.join(toks)})")
-    return " AND ".join(groups)
+    return joiner.join(groups) if groups else ""
 
 
 # ---------- 信号词命中（v1 scorer 的词边界算法，防 ASCII 短词误报） ----------

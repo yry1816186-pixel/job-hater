@@ -33,6 +33,14 @@ def get_con():
 class ProfileIn(BaseModel):
     display_name: str
     headline: str | None = None
+    phone: str | None = None
+    email: str | None = None
+
+
+class ProfilePatchIn(BaseModel):
+    headline: str | None = None
+    phone: str | None = None
+    email: str | None = None
 
 
 class EducationIn(BaseModel):
@@ -277,7 +285,9 @@ def register_routes(app: FastAPI) -> None:
 
     @app.post("/api/profiles")
     def create_profile(body: ProfileIn, con=Depends(get_con)):
-        return ProfileService(con).create_profile(body.display_name, body.headline).model_dump()
+        return ProfileService(con).create_profile(
+            body.display_name, body.headline, phone=body.phone, email=body.email
+        ).model_dump()
 
     @app.get("/api/profiles")
     def list_profiles(con=Depends(get_con)):
@@ -290,6 +300,15 @@ def register_routes(app: FastAPI) -> None:
         if not p:
             raise HTTPException(404, "profile 不存在")
         return ps.match_view(profile_id)
+
+    @app.patch("/api/profiles/{profile_id}")
+    def patch_profile(profile_id: str, body: ProfilePatchIn, con=Depends(get_con)):
+        try:
+            return ProfileService(con).update_profile(
+                profile_id, headline=body.headline, phone=body.phone, email=body.email
+            ).model_dump()
+        except KeyError:
+            raise HTTPException(404, "profile 不存在") from None
 
     @app.post("/api/profiles/{profile_id}/educations")
     def add_education(profile_id: str, body: EducationIn, con=Depends(get_con)):
