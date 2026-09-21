@@ -195,7 +195,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.cmd == "jobs":
-            jobs = JobService(con).search(args.q, limit=args.limit)
+            from jobhater.services.jobs import JobService as _JS
+
+            jobs = _JS(con).search(args.q, limit=args.limit)
             for j in jobs:
                 mark = "⏹" if j.status.value == "expired" else " "
                 print(f"  {mark} {j.title} @ {j.employer_name}"
