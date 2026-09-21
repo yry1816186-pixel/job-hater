@@ -12,6 +12,14 @@ node_modules/
 __pycache__/
 *.pyc
 .DS_Store
+*.egg-info/
+build/
+dist/
+.zcode/
+.jobhater/
+.pytest_cache/
+.ruff_cache/
+frontend/dist/
 
 # ===== 本地环境与凭证 =====
 .env
@@ -28,3 +36,7 @@ skills/upstream/**
 !skills/upstream/ai-job-search/LICENSE
 !skills/upstream/career-ops/EXTRACTION_NOTES.md
 !skills/upstream/career-ops/LICENSE
+
+# 浏览器走查产物（本地工具）
+.playwright-mcp/
+.zcodeignore

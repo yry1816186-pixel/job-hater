@@ -1,123 +1,126 @@
-# Campus-Job-Agent · 2027届秋招自动化求职系统
+# Job Hater · 本地求职全流程管理系统
 
-一套运行在 Claude Code 中的本地求职系统：岗位采集 → 校招过滤 → 五维评分 →
-定制简历（双Agent校验）→ 投递风控 → 进度追踪 → 面试准备 → 技能冲刺。
-**全部数据本地存储，无任何云端上传逻辑。**
+帮你管理整个求职生命周期：**发现岗位 → 判断匹配 → 管理岗位 → 准备材料 → 投递确认 → 跟踪进度 → 面试 → Offer 比较**。
 
-## 环境配置
+- **本地优先**：全部业务数据（画像、岗位库、投递记录、简历）只存在你自己的机器上，没有账号、没有云端、没有遥测。
+- **事实不可捏造**：简历里每条经历都能溯源到你确认过的证据原文；机器事实校验不过闸，不能定稿。
+- **匹配可解释**：每个岗位给出「结论 + 依据 + 不确定性」，不是一个神秘的 87 分；硬性淘汰原因逐条透明。
+- **投递由你完成**：系统不代替你向任何平台发送投递。「已投递」状态只在你亲手确认后生效。
+- **诚实的降级**：没配 AI、没网、信源挂掉——功能如实降级并告诉你原因，绝不假装成功。
 
-| 依赖 | 要求 | 用途 |
+适用于应届校招、实习、社招、转行；技术/产品/设计/运营/职能/制造/科研各类方向——所有"应届生该怎样""国企更好"式的预设都在你的偏好设置里，不在代码里。
+
+## 快速开始（3 分钟）
+
+**方式一：Python 直跑**（Python ≥ 3.10）
+
+```bash
+git clone https://github.com/yry1816186-pixel/job-hater.git
+cd job-hater
+pip install -e .
+# 构建前端（需要 Node ≥ 18）
+cd frontend && npm install && npm run build && cd ..
+# 启动（本地 Web 界面 + API 同进程）
+job-hater serve
+```
+
+浏览器打开 <http://127.0.0.1:8787>。
+
+**方式二：Docker**
+
+```bash
+docker compose up --build
+```
+
+**方式三：只用命令行**
+
+```bash
+job-hater doctor                          # 环境自检
+job-hater import jobs.json                # 导入岗位 JSON
+job-hater paste --save --url <链接> < jd.txt   # 从 stdin 粘贴 JD 解析入库
+job-hater match --profile <画像ID>        # 匹配排序榜
+job-hater fetch --companies mihoyo        # 官网信源抓取（米哈游/百度/网易）
+```
+
+## 第一次使用（5 步）
+
+打开 Web 界面后，总览页有一个**开始清单**，跟着点就行：
+
+1. **建档**：「我的画像」按步骤 1-5 组织——学历经历 → 技能（含同义词） → 事实证据 → 求职偏好。每节开头都写明「这步影响什么」。
+2. **设方向**：「求职偏好」默认**不限批次**（避免悄悄过滤），按需收窄：目标角色、城市、薪资底线、经验上限、毕业届数。
+3. **进岗位**：「导入岗位」→ 粘贴任何网站的 JD 原文 → 核对草稿 → 入库（**你核对修改的字段不会被覆盖**）。粘贴是主链入口：即使所有自动化信源都不可用，粘贴永远可用。
+4. **看匹配**：「岗位收件箱」每个岗位带分与四档结论（强烈推荐/推荐/可考虑/暂缓）→ 详情页看六维依据与硬性 gate 检查（含疑似薪资倒挂提示）。
+5. **备材料 & 管投递**：详情页「材料工坊」一键生成**岗位定制简历 / 求职信 / 打招呼话术 / 面试题库 / 技能提升计划**（全部本地确定性生成，不用 AI）；「收藏并开始跟踪」后去投递看板推进——准备漏斗可一键跳步，**「我已投递」只在你亲口确认后生效**。
+
+## 命令行参考
+
+| 命令 | 作用 |
+|------|------|
+| `job-hater serve` | 启动本地 Web 服务（127.0.0.1:8787） |
+| `job-hater doctor` | 数据库/迁移/信源自检 |
+| `job-hater import <file.json> [--source manual]` | 导入岗位（数组或 `{"jobs":[...]}`） |
+| `job-hater paste [--save] [--url <链接>]` | stdin 读 JD 原文：默认出草稿，`--save` 入库 |
+| `job-hater jobs [--q 关键词] [--limit N]` | 检索列出岗位 |
+| `job-hater match --profile <id> [--preset <id>]` | 匹配排序 |
+| `job-hater applications --profile <id>` | 列出投递跟踪（含岗位名） |
+| `job-hater transition <投递ID> <状态> [--note]` | 推进状态（漏斗内可跳步） |
+| `job-hater confirm-applied <投递ID> [--channel 官网]` | 用户确认已投递（投后阶段唯一入口） |
+| `job-hater fetch [--companies mihoyo,baidu,netease] [--dry-run]` | 官网信源抓取 |
+| `job-hater migrate-v1 <旧data目录>` | 从 v1 (Campus-Job-Agent) JSON 一次性迁移 |
+| `job-hater backup` | WAL checkpoint 后复制数据库到 exports/backups |
+
+## AI 能力与隐私（如实说明）
+
+**本地存储**：业务数据默认只保存在你设备的数据目录（`~/.jobhater`，或环境变量 `JOBHATER_DATA` 指定的位置）。
+
+**远程 AI 处理是可选项，默认关闭**：
+
+- 不配置任何 AI Provider = 本地模式：建档、导入、检索、匹配、投递管理、简历编辑与 Markdown/HTML 导出全部可用；PDF/DOCX 导出安装可选依赖后可用。
+- 你主动添加并启用 Provider（智谱 GLM / DeepSeek / Qwen / Kimi / OpenAI 兼容 / Anthropic / 本地 Ollama）后，AI 增强功能才会工作。每次调用前，「设置与隐私」页明确显示该类任务会发送什么类别的数据。
+- API Key 只存操作系统钥匙串（Windows 凭据管理器 / macOS 钥匙串），数据库与日志永不保存。
+- Ollama 本地端点 = 数据不出机器。
+
+**没有遥测、没有统计上报、没有崩溃收集。**
+
+## 岗位从哪来
+
+| 信源 | 方式 | 状态 |
 |------|------|------|
-| Python | ≥ 3.10（开发环境 3.14） | 核心引擎，**仅标准库，零第三方依赖** |
-| git | 任意近期版本 | 上游开源项目源码管理 |
-| Claude Code | 任意近期版本 | 技能加载、对话交互 |
-| （可选）采集底座 venv | 磁盘 ~100MB | `fetch` 信源采集（wenke-radar 依赖：requests/bs4/pycryptodome/openpyxl） |
+| 粘贴导入 | 任何网站复制 JD 原文 → 解析草稿 → 确认入库 | ✅ 主链，永远可用 |
+| 文件导入 | JSON（数组或 `{"jobs":[...]}`） | ✅ |
+| 校招官网适配器 | `job-hater fetch --companies mihoyo,baidu,netease`（米哈游/百度/网易校招官网公开 JSON API，来自 MIT 项目 wenke-radar 的移植，限速抓取） | ✅ 已接入 |
+| 官方 API 适配器 | `SourceAdapter` 插件契约（capabilities/health_check/rate_policy/provenance） | 契约就绪，适配器按源渐进接入 |
+| MCP | `job-hater-mcp`（16 个工具，官方 SDK） | ✅ Agent 增强层 |
 
-```bash
-# 第一次用（四步）：
-python3 core/cli.py profile --init        # 1. 生成画像模板 → 填入你的真实信息（或把简历发给 Claude 对话式建档）
-python3 core/cli.py profile --validate    # 2. 自检通过（✅ 证据锚点完整）后再继续
-python3 core/cli.py ingest --file <你填好的岗位.json> --source manual   # 3. 导入岗位（模板要先填真实内容；占位符会被拒收）
-python3 core/cli.py search                # 4. 出你的专属评分榜
+导入统一走分层去重：同源同 ID → 跨源同岗键 → 近似标题（标记人工复核）→ 内容指纹。每条岗位保留原始快照与来源。
 
-# 3b.（可选）自动采集官方接口——需要上游归档与采集底座，二选一都行：
-bash scripts/bootstrap_upstream.sh && bash adapters/sources/setup_env.sh
-python3 core/cli.py fetch --env all       # 28个官方接口源 + 校招种子 + 渠道线索
+## 数据与备份
 
-# （可选）启用 MCP：复制 .mcp.json.example 为 .mcp.json 并按注释填好本机路径，
-# 在该目录启动 Claude Code 会自动加载；全局使用可复制 skills/ 到 ~/.claude/skills/
-```
+- 数据目录：`~/.jobhater/`（SQLite WAL + 导出文件）。备份 = 复制该目录；卸载 = 删除该目录。
+- 从 v1 迁移：`job-hater migrate-v1 <旧data目录>`（画像/证据/偏好/岗位全量迁移，v1 的"投递即拉黑公司"等旧语义不迁移并如实报告）。
 
-## 六个命令
-
-| 命令 | 干什么 | 示例 |
-|------|--------|------|
-| `/profile` | 导入/更新个人信息、简历、作品集 | 把新实习证明丢给Claude："帮我更新画像" |
-| `/search` | 搜岗位、评分排序 | "帮我找南京的AI产品校招岗" / `search --job <id>` |
-| `/apply` | 定制简历+求职信+打招呼话术 | "给XX公司这个岗出投递材料" / `apply --job <id> --send` |
-| `/interview` | 面试题库+模拟面试 | "下周XX公司二面，帮我模拟" |
-| `/pipeline` | 投递进度看板 | "现在投递情况怎么样了" |
-| `/upskill` | 技能缺口+冲刺学习计划 | "我还差什么？30天怎么补" |
-
-底层命令（Claude 自动调用，也可手动）：
-
-```bash
-python3 core/cli.py profile --init            # 从模板建档（不覆盖已有画像）
-python3 core/cli.py fetch --env all           # 信源采集（wenke,xiaozhao,leads 可单选；--only 调试单源）
-python3 core/cli.py sources                   # 信源健康面板（渠道线索+采集健康）
-python3 core/cli.py ingest --file templates/manual_job_template.json --source manual  # 导入岗位
-python3 core/cli.py search                    # 评分榜
-python3 core/cli.py search --job <id>         # 单岗五维详情
-python3 core/cli.py apply --job <id> --send   # 生成材料+记录投递（过风控才生效）
-python3 core/cli.py interview --job <id>      # 题库
-python3 core/cli.py pipeline                  # 看板（终端版）
-python3 core/cli.py dashboard                 # 离线HTML看板（漏斗/分布/源健康，浏览器打开）
-python3 core/cli.py upskill --job <id>        # 学习计划
-python3 core/cli.py blacklist [--add 公司名]   # 黑名单
-```
-
-## 岗位数据从哪来（按可靠性排序）
-
-1. **官方接口直连（`fetch --env wenke`）**：复用 wenke-radar（MIT）28 个官方招聘接口抓取器
-   （腾讯/字节/阿里/百度/小米/美团/小红书/B站/米哈游等 + 北森/飞书ATS/Moka/百库平台），
-   零浏览器、零登录、限速每日一次。首次运行 `bash adapters/sources/setup_env.sh` 装采集底座。
-2. **校招种子（`fetch --env xiaozhao`）**：xiaozhao-radar（Apache-2.0）的 27届校招项目线索集
-   （公司+批次+报名入口，约 900 条当前批次有效线索）。
-3. **渠道线索（`fetch --env leads`）**：job-radar 信源清单转写（39 个渠道：国聘/国家大学生就业平台/
-   央企专栏/高校就业网等），仅作线索索引，不自动入库。
-4. **粘贴导入（永远可用）**：把 JD 原文发给 Claude，或填 `templates/manual_job_template.json` 后 `ingest`。
-5. **MCP**：`.mcp.json` 已配置本地 server（`add_job` / `score_job_text` / `search_jobs` / `get_job` / `fetch_sources` 等9个工具）。
-
-平台站内采集（Boss直聘等需浏览器会话+扫码的方案）状态见 `docs/降级路径说明.md`——
-**系统绝不假装某个采集方案可用**。榜单中 🧭 标记 = 项目级线索（公司+批次入口），投递前先点开链接确认具体岗位。
-
-## 反捏造机制（本系统的灵魂）
-
-- 画像里每条事实锚定 `evidence_index`（可溯源到 `data/profile/raw/` 原始材料）；
-- 生成的简历/求职信/话术每条经历带 `[ev:ID]` 引用，`core/factcheck.py` 做
-  **引用覆盖 / 证据存在 / 数字溯源** 三项硬校验，不过闸 = 不交付；
-- 审核Agent（LLM）逐条对照证据核验 + 机器 factcheck 双保险；
-- 审核会拦截一切虚构：编造经历、虚构量化数据、"使用过"写成"构建了"。
-
-## 投递风控（确定性强制）
-
-- 单平台每日 ≤ 25 份；消息间隔 ≥ 30 秒；敏感时段（默认22:00-08:00）禁投；
-- 自动黑名单防重复投递同一家企业；
-- 风控拦截时明确告知原因，绝不静默放行（`core/risk.py`）。
-
-## 目录结构
+## 技术架构
 
 ```
-campus-job-agent/
-├── Campus-Job-Agent.SKILL.md   # 主技能入口（六命令路由+总规则）
-├── README.md
-├── core/                       # 核心引擎（纯标准库，零网络代码）
-│   ├── store.py ingest.py scorer.py resume.py factcheck.py
-│   ├── risk.py interview.py upskill.py dashboard.py cli.py
-├── skills/                     # 六大子技能 + jobmatch-ai
-├── mcp/job_agent_mcp.py        # 本地MCP server（stdio，9工具）
-├── adapters/                   # 平台/信源适配（含诚实验证状态，详见 adapters/sources/README.md）
-├── templates/                  # 随仓库分发的建档/录入模板
-├── scripts/bootstrap_upstream.sh  # 上游项目归档拉取（repos/ 不入库）
-├── data/                       # 全部本地数据（gitignore：画像/岗位库/投递台账只存在你机器上）
-├── docs/                       # 治理/引入清单/反思报告/降级说明/迭代报告
-├── tests/                      # 自运行测试脚本
-└── .github/                    # CI（3×Python矩阵 + 数据本地性/个人事实静态检查）
+┌─ 接口层 ────────────────────────────────┐
+│ Web UI (React/TS) · CLI · MCP (官方SDK) │
+├─ 应用服务层（唯一业务逻辑）──────────────┤
+│ Profile / Jobs / Matching / Resume /    │
+│ Lifecycle / Feedback / AI Provider      │
+├─ 领域层 ────────────────────────────────┤
+│ 30+ Pydantic 实体 · 状态机 · 枚举       │
+├─ 数据层 ────────────────────────────────┤
+│ SQLite(WAL) · 迁移 · FTS5中文检索       │
+│ (search_text 预分词: jieba可选/bigram)  │
+└─────────────────────────────────────────┘
 ```
 
-## 合规与免责声明
+一套 domain、一套 services、一套 DB——UI/CLI/MCP 不存在平行逻辑。
 
-- 本项目**不提供平台站内自动投递**：真实站内动作需你在自己的浏览器会话中完成，
-  系统只做采集、评分、材料生成、风控检查与本地台账（半自动设计，见 docs/降级路径说明.md）。
-- 招聘平台的服务条款普遍限制自动化访问；使用任何采集能力前请自行确认平台条款与当地法规，
-  账号风控风险由使用者自担。本项目仅用于个人求职目的（部分上游依赖为非商业许可）。
-- 采集优先走官方公开接口，限速每日一次；抓不到的渠道如实标注，不破解、不伪装。
-- **个人数据零上传**：`data/` 整体被 gitignore，核心引擎无网络代码（CI 有静态检查强制）。
-  模型下载（可选的语义增强）仅从模型源下载权重，不发送你的任何数据。
+## 参与贡献
 
-## 注意事项
+见 [CONTRIBUTING.md](CONTRIBUTING.md)。开发环境：`pip install -e ".[dev]"` + `cd frontend && npm install`；测试 `python -m pytest`； lint `python -m ruff check jobhater tests`；前端 `npx tsc -b && npx vite build`。
 
-- 首次使用先跟 Claude 说"看看我的画像"，确认材料齐了再开始投；
-- 简历投出去之前自己再读一遍——机器守真实底线，品味判断永远归你；
-- 风控参数可在 `data/config.json` 调整，但**不建议放宽**（账号安全第一）；
-- 上游开源项目各自的协议与版权信息见 `docs/THIRD_PARTY_NOTICES.md`。
+## 许可
+
+MIT。第三方依赖与设计参考见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md)。

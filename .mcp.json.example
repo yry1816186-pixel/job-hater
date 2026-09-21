@@ -1,19 +1,11 @@
 {
   "mcpServers": {
-    "campus-job-agent": {
-      "command": "python3",
-      "args": ["<项目绝对路径>/mcp/job_agent_mcp.py"],
-      "env": {}
-    },
-    "openhire": {
-      "command": "<pip用户bin目录>/ohp",
-      "args": ["serve"],
-      "env": {}
-    },
-    "boss-agent": {
-      "command": "<uv工具bin目录>/boss-mcp",
+    "job-hater": {
+      "command": "job-hater-mcp",
       "args": [],
-      "env": {}
+      "env": {
+        "JOBHATER_DATA": "<可选：数据目录绝对路径>"
+      }
     }
   }
 }

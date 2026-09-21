@@ -1,0 +1,11 @@
+services:
+  job-hater:
+    build: .
+    ports:
+      - "8787:8787"
+    volumes:
+      - jobhater-data:/data
+    restart: unless-stopped
+
+volumes:
+  jobhater-data:

@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jobhater"
+version = "2.1.0"
+description = "Job Hater — 本地优先的中国求职全流程管理系统（发现→匹配→投递→跟踪→面试→Offer）"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "job-hater contributors" }]
+keywords = ["job-search", "career", "resume", "local-first"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Integrity :: 中文",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business",
+]
+dependencies = [
+    # fastapi>=0.141 是与 starlette>=1.0 兼容的最低线（低版本与 mcp 共存会崩）
+    "fastapi>=0.141",
+    "uvicorn>=0.29",
+    "pydantic>=2.6",
+    "httpx>=0.27",
+    "keyring>=24",
+    # 中文词级分词：FTS5 检索质量的默认依赖（缺失时仍自动退回字符 bigram，功能不缺失）
+    "jieba>=0.42",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.29"]
+# 中文词级分词（FTS5 检索质量增强；缺失时自动退回字符 bigram，功能不缺失）
+segment = ["jieba>=0.42"]
+# 简历 DOCX 导出
+docx = ["python-docx>=1.1"]
+# 简历 PDF 导出（无头浏览器打印；缺失时提供浏览器打印降级路径）
+pdf = ["playwright>=1.44"]
+# 开发与测试
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+job-hater = "jobhater.cli:main"
+job-hater-mcp = "jobhater.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["jobhater*"]
+
+[tool.setuptools.package-data]
+jobhater = ["db/migrations/*.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 惯用法：Depends()/Query() 在参数默认位调用是官方模式
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
