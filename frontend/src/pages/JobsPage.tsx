@@ -13,6 +13,7 @@ export default function JobsPage() {
   const [q, setQ] = useState('')
   const [city, setCity] = useState('')
   const [recruit, setRecruit] = useState('')
+  const [sort, setSort] = useState<'recent' | 'match'>('recent')
   const [items, setItems] = useState<Job[]>([])
   const [total, setTotal] = useState(0)
   const [shown, setShown] = useState(PAGE)
@@ -20,15 +21,39 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
   const [hasPreset, setHasPreset] = useState(true)
+  const [staleHint, setStaleHint] = useState('')
 
   const load = useCallback(() => {
     setLoading(true)
     setErr('')
+    setStaleHint('')
+    // 匹配优先：直接用已存的最近一次匹配结果排序（翻页不重复计算）；
+    // 最近入库：老路径——/match/run 现算当前页的分数
+    const useStored = sort === 'match' && !!activeId
     api
-      .get<{ total: number; items: Job[] }>(`/jobs${qs({ q, city, recruitment_type: recruit, limit: shown })}`)
+      .get<{
+        total: number
+        items: Job[]
+        match_by_id?: Record<string, MatchOutcome>
+        match_stale_hint?: string
+      }>(
+        `/jobs${qs({
+          q,
+          city,
+          recruitment_type: recruit,
+          limit: shown,
+          sort: useStored ? 'match' : undefined,
+          profile_id: useStored ? activeId : undefined,
+        })}`,
+      )
       .then(async (r) => {
         setItems(r.items)
         setTotal(r.total)
+        if (useStored) {
+          setMatches(r.match_by_id ?? {})
+          setStaleHint(r.match_stale_hint ?? '')
+          return
+        }
         setMatches({})
         if (!activeId) return
         // 先看有没有偏好：无偏好是引导态而非错误态
@@ -50,7 +75,7 @@ export default function JobsPage() {
       })
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false))
-  }, [q, city, recruit, shown, activeId])
+  }, [q, city, recruit, shown, activeId, sort])
 
   useEffect(() => {
     const t = setTimeout(load, 300) // 搜索防抖
@@ -86,8 +111,19 @@ export default function JobsPage() {
           <option value="social">社招</option>
           <option value="internship">实习</option>
         </select>
+        <select
+          value={sort}
+          onChange={(e) => { setSort(e.target.value as 'recent' | 'match'); setShown(PAGE) }}
+          style={{ width: 150 }}
+          aria-label="排序方式"
+          title={sort === 'match' ? '按最近一次匹配结果排序：合格优先 → 匹配分 → 相关性' : '按入库时间倒序'}
+        >
+          <option value="recent">最近入库</option>
+          <option value="match">匹配优先</option>
+        </select>
       </div>
       {err && <div className="error-box">{err}</div>}
+      {staleHint && <div className="card hint" style={{ marginBottom: 12, padding: '8px 12px' }}>{staleHint}</div>}
 
       {loading ? (
         <div className="loading">加载中…</div>

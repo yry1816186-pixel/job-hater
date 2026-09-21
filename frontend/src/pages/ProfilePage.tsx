@@ -33,6 +33,9 @@ export default function ProfilePage() {
   const [showCreate, setShowCreate] = useState(params.get('new') === '1')
   const [newName, setNewName] = useState('')
   const [newHeadline, setNewHeadline] = useState('')
+  const [newPhone, setNewPhone] = useState('')
+  const [newEmail, setNewEmail] = useState('')
+  const [contact, setContact] = useState({ phone: '', email: '' })
 
   // 各表单受控态
   const [skillName, setSkillName] = useState('')
@@ -57,6 +60,7 @@ export default function ProfilePage() {
         setView(v)
         setEvidence(e)
         setPresets(p)
+        setContact({ phone: v.profile.phone ?? '', email: v.profile.email ?? '' })
       })
       .catch((er) => setErr(er.message))
   }
@@ -76,13 +80,28 @@ export default function ProfilePage() {
       const p = await api.post<ProfileView['profile']>('/profiles', {
         display_name: newName.trim(),
         headline: newHeadline.trim() || null,
+        phone: newPhone.trim() || null,
+        email: newEmail.trim() || null,
       })
       setNewName('')
       setNewHeadline('')
+      setNewPhone('')
+      setNewEmail('')
       setShowCreate(false)
       await refresh()
       localStorage.setItem('jobhater-active-profile', p.id)
       toast('success', `画像「${p.display_name}」已创建`)
+    })
+
+  const saveContact = () =>
+    guard(async () => {
+      if (!activeId) return
+      await api.patch(`/profiles/${activeId}`, {
+        phone: contact.phone.trim(),
+        email: contact.email.trim(),
+      })
+      toast('success', '联系方式已保存（写入简历头部与求职信落款）')
+      load()
     })
 
   const addSkill = () =>
@@ -201,6 +220,14 @@ export default function ProfilePage() {
             一句话介绍（可选）
             <input type="text" value={newHeadline} onChange={(e) => setNewHeadline(e.target.value)} placeholder="如：2027届本科 · 设计×AI / 3年Java后端" />
           </label>
+          <label className="field">
+            手机（可选）
+            <input type="tel" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="写入简历头部" />
+          </label>
+          <label className="field">
+            邮箱（可选）
+            <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="写入简历头部" />
+          </label>
           <button className="btn primary" onClick={createProfile} disabled={!newName.trim()}>
             创建画像
           </button>
@@ -241,9 +268,59 @@ export default function ProfilePage() {
             一句话介绍（可选）
             <input type="text" value={newHeadline} onChange={(e) => setNewHeadline(e.target.value)} />
           </label>
+          <label className="field">
+            手机（可选）
+            <input type="tel" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} />
+          </label>
+          <label className="field">
+            邮箱（可选）
+            <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+          </label>
           <button className="btn primary" onClick={createProfile} disabled={!newName.trim()}>创建</button>
         </div>
       )}
+
+      {/* 联系方式：简历 basics 的法定字段，缺了简历没法被联系 */}
+      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <b>联系方式</b>
+        <p className="hint" style={{ margin: '4px 0 10px' }}>
+          写入简历头部与求职信落款。数据只在本机，不参与匹配打分。
+        </p>
+        <div className="row">
+          <input
+            type="tel"
+            placeholder="手机号"
+            value={contact.phone}
+            onChange={(e) => setContact((c) => ({ ...c, phone: e.target.value }))}
+            style={{ width: 180 }}
+            aria-label="手机号"
+          />
+          <input
+            type="email"
+            placeholder="邮箱"
+            value={contact.email}
+            onChange={(e) => setContact((c) => ({ ...c, email: e.target.value }))}
+            style={{ flex: 1, minWidth: 200 }}
+            aria-label="邮箱"
+          />
+          <button
+            className="btn"
+            onClick={saveContact}
+            disabled={
+              !!activeId
+              && contact.phone === (view?.profile.phone ?? '')
+              && contact.email === (view?.profile.email ?? '')
+            }
+          >
+            保存
+          </button>
+        </div>
+        {!view?.profile.phone && !view?.profile.email && (
+          <p className="hint" style={{ marginTop: 8, color: 'var(--warn, #b8860b)' }}>
+            ⚠ 还没有任何联系方式——导出的简历头部将是空的，投递前务必补上。
+          </p>
+        )}
+      </div>
 
       {/* 第 1 步：学历与经历（简历主体素材） */}
       <SectionHead

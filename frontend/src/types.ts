@@ -5,6 +5,8 @@ export interface Profile {
   display_name: string
   headline?: string | null
   summary?: string | null
+  phone?: string | null
+  email?: string | null
 }
 
 export interface ProfileView {
