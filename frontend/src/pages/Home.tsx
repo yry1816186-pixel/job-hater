@@ -1,9 +1,110 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, qs } from '../api'
-import type { Application, Job, JobSourceInfo, MatchOutcome, Preset, ProfileView } from '../types'
+import type {
+  Application, Job, JobSourceInfo, MatchOutcome, Preset, ProfileView,
+  Reminder, ReminderSuggestion,
+} from '../types'
 import { useProfiles } from '../App'
 import { useToast } from '../components/ui'
+
+function dueLabel(due: string): { text: string; overdue: boolean; today: boolean } {
+  const d = due.slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
+  return { text: d === today ? '今天' : d, overdue: d < today, today: d === today }
+}
+
+/** 今日驾驶舱：提醒 + 确定性跟进建议（建议不落库，采纳后才成为提醒）。 */
+function ReminderPanel({ profileId }: { profileId: string | null }) {
+  const { toast } = useToast()
+  const [reminders, setReminders] = useState<Reminder[]>([])
+  const [suggestions, setSuggestions] = useState<ReminderSuggestion[]>([])
+  const [busy, setBusy] = useState(false)
+
+  const load = () => {
+    const suffix = profileId ? qs({ profile_id: profileId }) : ''
+    Promise.all([
+      api.get<Reminder[]>(`/reminders${suffix ? `?${suffix}` : ''}`),
+      api.get<ReminderSuggestion[]>(`/reminders/suggestions${suffix ? `?${suffix}` : ''}`),
+    ])
+      .then(([rs, sgs]) => {
+        setReminders(rs)
+        setSuggestions(sgs)
+      })
+      .catch(() => {
+        /* 面板失败不砸整页 */
+      })
+  }
+  useEffect(load, [profileId])
+
+  const toggle = async (r: Reminder) => {
+    try {
+      await api.patch<Reminder>(`/reminders/${r.id}`, { done: !r.done })
+      load()
+    } catch (e) {
+      toast('error', (e as Error).message)
+    }
+  }
+  const adopt = async (s: ReminderSuggestion) => {
+    setBusy(true)
+    try {
+      await api.post('/reminders', {
+        owner_kind: s.owner_kind, owner_id: s.owner_id,
+        due_at: s.due_at, title: s.title, kind: s.kind,
+      })
+      toast('success', '已加入提醒')
+      load()
+    } catch (e) {
+      toast('error', (e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const open = reminders.filter((r) => !r.done)
+  if (!open.length && !suggestions.length) return null
+  return (
+    <div className="card" style={{ padding: 18, marginBottom: 18 }}>
+      <h2 style={{ marginTop: 0, fontSize: 17 }}>今日待办（{open.length} 条提醒 · {suggestions.length} 条建议）</h2>
+      {open.map((r) => {
+        const d = dueLabel(r.due_at)
+        return (
+          <div key={r.id} className={`reminder-item${d.overdue ? ' overdue' : ''}`}>
+            <span className="due">{d.overdue ? `⚠ ${d.text}` : d.text}</span>
+            <span className="title" style={{ flex: 1 }}>
+              {r.title}
+              {r.owner_title && (
+                <span style={{ color: 'var(--muted)', fontSize: 12 }}>（{r.owner_employer} · {r.owner_title}）</span>
+              )}
+            </span>
+            <button className="btn" onClick={() => toggle(r)}>完成</button>
+          </div>
+        )
+      })}
+      {suggestions.map((s) => (
+        <div key={`${s.owner_kind}:${s.owner_id}:${s.kind}`} className="suggestion-item">
+          <div>{s.title}</div>
+          <div className="why">{s.reason} · 系统建议，不自动创建</div>
+          <button className="btn" disabled={busy} onClick={() => adopt(s)}>采纳为提醒</button>
+        </div>
+      ))}
+      {reminders.some((r) => r.done) && (
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--muted)' }}>
+            已完成（{reminders.filter((r) => r.done).length}）
+          </summary>
+          {reminders.filter((r) => r.done).map((r) => (
+            <div key={r.id} className="reminder-item done">
+              <span className="due">{r.due_at.slice(0, 10)}</span>
+              <span className="title" style={{ flex: 1 }}>{r.title}</span>
+              <button className="btn" onClick={() => toggle(r)}>撤销</button>
+            </div>
+          ))}
+        </details>
+      )}
+    </div>
+  )
+}
 
 /** 总览 = 新手引导清单 + 日常驾驶舱。全部基于真实数据，不造 KPI。 */
 export default function Home() {
@@ -119,6 +220,8 @@ export default function Home() {
       </p>
       {err && <div className="error-box">加载失败：{err}（服务器在本地 8787 端口，确认已启动）</div>}
 
+      <ReminderPanel profileId={activeId} />
+
       {/* 引导清单：未完成时置顶 */}
       {!setupDone && (
         <div className="card" style={{ padding: 20, marginBottom: 20 }}>
@@ -165,6 +268,7 @@ export default function Home() {
         </button>
         <Link className="btn" to="/import">导入 / 粘贴岗位</Link>
         <Link className="btn" to="/jobs">进收件箱看匹配 →</Link>
+        <Link className="btn" to="/analytics">求职分析（漏斗/渠道/薪资）→</Link>
       </div>
 
       {topMatches.length > 0 && (

@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, qs } from '../api'
-import type { Job, MatchOutcome, Preset } from '../types'
+import type { Job, MatchOutcome, Preset, SavedSearch } from '../types'
 import { useProfiles } from '../App'
-import { EmptyState, RECRUIT_LABELS } from '../components/ui'
+import { EmptyState, RECRUIT_LABELS, useToast } from '../components/ui'
 
 const PAGE = 30
 
-/** 岗位收件箱：检索 + 筛选 + 匹配分列（无偏好时给引导而非报错） */
+/** 岗位收件箱：检索 + 筛选 + 匹配分列（无偏好时给引导而非报错）+ 保存搜索 + 新增角标 */
 export default function JobsPage() {
   const { activeId } = useProfiles()
+  const { toast } = useToast()
   const [q, setQ] = useState('')
   const [city, setCity] = useState('')
   const [recruit, setRecruit] = useState('')
@@ -22,6 +23,10 @@ export default function JobsPage() {
   const [err, setErr] = useState('')
   const [hasPreset, setHasPreset] = useState(true)
   const [staleHint, setStaleHint] = useState('')
+  const [saved, setSaved] = useState<SavedSearch[]>([])
+  const [newCount, setNewCount] = useState<number | null>(null)
+  const [onlyNew, setOnlyNew] = useState(false)
+  const [lastSeen, setLastSeen] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -44,6 +49,7 @@ export default function JobsPage() {
           limit: shown,
           sort: useStored ? 'match' : undefined,
           profile_id: useStored ? activeId : undefined,
+          since: onlyNew && lastSeen ? lastSeen : undefined,
         })}`,
       )
       .then(async (r) => {
@@ -75,12 +81,66 @@ export default function JobsPage() {
       })
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false))
-  }, [q, city, recruit, shown, activeId, sort])
+  }, [q, city, recruit, shown, activeId, sort, onlyNew, lastSeen])
 
   useEffect(() => {
     const t = setTimeout(load, 300) // 搜索防抖
     return () => clearTimeout(t)
   }, [load])
+
+  // 保存的搜索 + 「新增 N 条」角标（对照上次查看时间，只算新入库）
+  useEffect(() => {
+    api
+      .get<{ key: string; value: SavedSearch[] | null }>('/settings/saved_searches')
+      .then((r) => setSaved(r.value ?? []))
+      .catch(() => setSaved([]))
+    api
+      .get<{ key: string; value: string | null }>('/settings/jobs_last_seen_at')
+      .then(async (r) => {
+        const last = r.value
+        const today = new Date().toISOString().slice(0, 10)
+        setLastSeen(last && last < today ? last : null)
+        // 本次浏览结束时更新时间戳（离开页面也算"看过了"）
+        api.put('/settings/jobs_last_seen_at', { value: today }).catch(() => {})
+        if (!last || last >= today) return
+        const c = await api
+          .get<{ total: number }>(`/jobs${qs({ since: last, limit: 1 })}`)
+          .catch(() => null)
+        if (c && c.total > 0) setNewCount(c.total)
+      })
+      .catch(() => {})
+  }, [])
+
+  const saveCurrent = async () => {
+    const name = window.prompt('给这个搜索起个名字（如：杭州后端）')
+    if (!name) return
+    const params: SavedSearch['params'] = { q, city, recruitment_type: recruit, sort }
+    const next = [...saved.filter((s) => s.name !== name), { name, params }]
+    try {
+      await api.put('/settings/saved_searches', { value: next })
+      setSaved(next)
+      toast('success', `已保存搜索「${name}」`)
+    } catch (e) {
+      toast('error', (e as Error).message)
+    }
+  }
+  const applySaved = (s: SavedSearch) => {
+    setQ(String(s.params.q ?? ''))
+    setCity(String(s.params.city ?? ''))
+    setRecruit(String(s.params.recruitment_type ?? ''))
+    setSort((s.params.sort as 'recent' | 'match') ?? 'recent')
+    setOnlyNew(false)
+    setShown(PAGE)
+  }
+  const removeSaved = async (name: string) => {
+    const next = saved.filter((s) => s.name !== name)
+    try {
+      await api.put('/settings/saved_searches', { value: next })
+      setSaved(next)
+    } catch (e) {
+      toast('error', (e as Error).message)
+    }
+  }
 
   return (
     <div>
@@ -123,6 +183,48 @@ export default function JobsPage() {
         </select>
       </div>
       {err && <div className="error-box">{err}</div>}
+      {newCount !== null && !onlyNew && (
+        <button
+          className="card cta-card"
+          style={{ marginBottom: 12, width: '100%', textAlign: 'left', cursor: 'pointer' }}
+          onClick={() => { setOnlyNew(true); setNewCount(null) }}
+        >
+          <b>🆕 自上次查看（{lastSeen}）以来新增 {newCount} 条岗位</b>
+          <span className="hint" style={{ marginLeft: 8 }}>点击只看新增</span>
+        </button>
+      )}
+      {onlyNew && (
+        <div className="card hint" style={{ marginBottom: 12, padding: '8px 12px' }}>
+          正在只看 {lastSeen} 之后新入库的岗位 ·{' '}
+          <button className="btn" style={{ padding: '2px 10px' }} onClick={() => setOnlyNew(false)}>
+            查看全部
+          </button>
+        </div>
+      )}
+      {saved.length > 0 && (
+        <div className="row" style={{ marginBottom: 10, flexWrap: 'wrap' }}>
+          {saved.map((s) => (
+            <span key={s.name} className="tag-chip">
+              <button
+                style={{ all: 'unset', cursor: 'pointer' }}
+                title="应用这个保存的搜索"
+                onClick={() => applySaved(s)}
+              >
+                🔖 {s.name}
+              </button>
+              <button aria-label={`删除搜索 ${s.name}`} onClick={() => removeSaved(s.name)}>×</button>
+            </span>
+          ))}
+          <button className="btn" style={{ padding: '2px 12px' }} onClick={saveCurrent}>＋ 保存当前搜索</button>
+        </div>
+      )}
+      {saved.length === 0 && (
+        <div className="row" style={{ marginBottom: 10 }}>
+          <button className="btn" style={{ padding: '2px 12px' }} onClick={saveCurrent}>
+            🔖 保存当前搜索（常用筛选一键回来）
+          </button>
+        </div>
+      )}
       {staleHint && <div className="card hint" style={{ marginBottom: 12, padding: '8px 12px' }}>{staleHint}</div>}
 
       {loading ? (

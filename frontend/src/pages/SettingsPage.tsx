@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react'
-import { api } from '../api'
-import type { AIProviderInfo, JobSourceInfo } from '../types'
-import { AI_TASK_LABELS } from '../components/ui'
+import { useEffect, useRef, useState } from 'react'
+import { api, qs } from '../api'
+import type { AIProviderInfo, JobSourceInfo, Profile } from '../types'
+import { AI_TASK_LABELS, ConfirmDialog, useToast } from '../components/ui'
 
-/** 设置与隐私：AI Provider（opt-in）、信源健康、数据出境披露 */
+/** 设置与隐私：AI Provider（opt-in）、信源健康、数据出境披露、备份恢复与导出 */
 export default function SettingsPage() {
+  const { toast } = useToast()
   const [providers, setProviders] = useState<AIProviderInfo[]>([])
   const [sources, setSources] = useState<JobSourceInfo[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
   const [egress, setEgress] = useState<Record<string, string>>({})
   const [form, setForm] = useState({
     kind: 'openai_compatible',
@@ -16,10 +18,14 @@ export default function SettingsPage() {
   })
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
+  const [restoring, setRestoring] = useState(false)
+  const [confirmRestore, setConfirmRestore] = useState<File | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const load = () => {
     api.get<AIProviderInfo[]>('/ai/providers').then(setProviders).catch(() => {})
     api.get<JobSourceInfo[]>('/sources').then(setSources).catch(() => {})
+    api.get<Profile[]>('/profiles').then(setProfiles).catch(() => {})
   }
   useEffect(load, [])
 
@@ -69,6 +75,43 @@ export default function SettingsPage() {
       load()
     } catch (e) {
       setErr((e as Error).message)
+    }
+  }
+
+  // ---------- 备份恢复 ----------
+
+  const pickRestoreFile = () => fileRef.current?.click()
+
+  const uploadRestore = async (file: File) => {
+    setRestoring(true)
+    setConfirmRestore(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file, file.name)
+      const resp = await fetch('/api/backup/restore', { method: 'POST', body: fd })
+      if (!resp.ok) {
+        let detail = `${resp.status} ${resp.statusText}`
+        try {
+          const body = await resp.json()
+          if (body?.detail) detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+        } catch {
+          /* 保持状态行 */
+        }
+        throw new Error(detail)
+      }
+      const report = (await resp.json()) as {
+        ok: boolean
+        schema_version: number
+        counts: Record<string, number>
+      }
+      toast('success', `恢复完成：${Object.entries(report.counts).map(([k, v]) => `${k} ${v} 条`).join('、')}`)
+      setMsg(`数据库已从备份恢复（schema v${report.schema_version}）。页面数据在下次加载时生效。`)
+      load()
+    } catch (e) {
+      toast('error', `恢复失败：${(e as Error).message}`)
+    } finally {
+      setRestoring(false)
+      if (fileRef.current) fileRef.current.value = ''
     }
   }
 
@@ -175,9 +218,63 @@ export default function SettingsPage() {
 
       <h2>数据位置与备份</h2>
       <div className="card">
-        <p style={{ margin: 0 }}>
+        <p style={{ marginTop: 0 }}>
           全部业务数据存储于本机数据目录（SQLite 数据库 + 导出文件）。没有遥测、没有统计上报、
-          没有云端账号。备份 = 复制数据目录；卸载 = 删除数据目录。
+          没有云端账号。
+        </p>
+        <div className="row" style={{ flexWrap: 'wrap' }}>
+          <a className="btn primary" href="/api/backup/download" download>
+            ⬇ 下载全量备份（.db）
+          </a>
+          <button className="btn" onClick={pickRestoreFile} disabled={restoring}>
+            {restoring ? '恢复中…' : '⬆ 从备份恢复…'}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".db,application/octet-stream"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) setConfirmRestore(f)
+            }}
+          />
+        </div>
+        <p className="hint" style={{ marginBottom: 0 }}>
+          备份包含全部表与索引；API Key 按设计只存系统钥匙串、不在备份内。
+          恢复会用备份<b>原位替换</b>当前数据库（三重校验：文件头/完整性/schema 版本一致才执行）。
+        </p>
+      </div>
+
+      <ConfirmDialog
+        open={!!confirmRestore}
+        title="确认恢复数据库？"
+        body={`将用「${confirmRestore?.name ?? ''}」原位替换当前全部数据（当前数据会被覆盖）。恢复前建议先下载一份当前备份。`}
+        confirmText="确认恢复"
+        danger
+        onCancel={() => setConfirmRestore(null)}
+        onConfirm={() => confirmRestore && uploadRestore(confirmRestore)}
+      />
+
+      <h2>数据导出（随时带走）</h2>
+      <div className="card">
+        <p style={{ marginTop: 0 }}>导出永远是免费的——你的数据不锁在本系统里。</p>
+        <div className="row" style={{ flexWrap: 'wrap' }}>
+          {profiles.length > 0 && (
+            <a
+              className="btn"
+              href={`/api/export/applications.csv${qs({ profile_id: profiles[0].id })}`}
+              download
+            >
+              投递记录 CSV（{profiles[0].display_name}）
+            </a>
+          )}
+          <a className="btn" href="/api/export/jobs.csv" download>
+            岗位库 CSV
+          </a>
+        </div>
+        <p className="hint" style={{ marginBottom: 0 }}>
+          CSV 带 UTF-8 BOM，Excel 直接打开不乱码。简历的 Markdown / JSON Resume / PDF 导出在「简历」页。
         </p>
       </div>
     </div>

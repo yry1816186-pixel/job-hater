@@ -320,3 +320,90 @@ table.data td { border-bottom: 1px solid var(--line); padding: 8px 10px; vertica
   border: 1px solid #b8860b; background: color-mix(in srgb, #b8860b 7%, var(--surface));
   border-radius: 8px; padding: 8px 12px; font-size: 13.5px; margin: 8px 0;
 }
+
+/* ===== 命令面板（Ctrl/⌘+K） ===== */
+.cmdk-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.42); z-index: 90;
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
+.cmdk { width: min(560px, 92vw); background: var(--bg, #fff); border-radius: 10px;
+  box-shadow: 0 18px 60px rgba(0,0,0,.28); overflow: hidden; }
+.cmdk-input { width: 100%; border: 0; border-bottom: 1px solid var(--line, #ddd);
+  padding: 13px 16px; font-size: 15px; background: transparent; color: inherit; outline: none; }
+.cmdk-list { max-height: 46vh; overflow: auto; padding: 6px; }
+.cmdk-item { display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  width: 100%; text-align: left; padding: 9px 12px; border: 0; background: transparent;
+  border-radius: 7px; cursor: pointer; font-size: 14px; color: inherit; }
+.cmdk-item:hover { background: var(--hover, #f0ede6); }
+.cmdk-item small { color: var(--muted, #888); flex-shrink: 0; }
+.cmdk-section { padding: 8px 12px 2px; font-size: 12px; color: var(--muted, #888); }
+.cmdk-empty { padding: 18px; text-align: center; color: var(--muted, #888); font-size: 14px; }
+
+/* ===== 投递看板（Kanban） ===== */
+.board-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.kanban { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start; }
+.kanban-col { min-width: 240px; max-width: 300px; flex: 1 0 240px; border-radius: 10px;
+  background: var(--panel, #f6f4ef); padding: 8px; }
+.kanban-col-head { display: flex; justify-content: space-between; align-items: center;
+  font-weight: 700; font-size: 13px; padding: 4px 6px 8px; }
+.kanban-col-head .count { color: var(--muted, #888); font-weight: 500; }
+.kanban-col.drop-target { outline: 2px dashed var(--accent, #8a5a2b); outline-offset: -2px; }
+.kanban-card { background: var(--bg, #fff); border: 1px solid var(--line, #e4e0d8);
+  border-radius: 8px; padding: 9px 10px; margin-bottom: 8px; cursor: grab; font-size: 13px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.kanban-card.dragging { opacity: .45; cursor: grabbing; }
+.kanban-card .card-title { font-weight: 600; line-height: 1.35; }
+.kanban-card .card-sub { color: var(--muted, #777); margin-top: 2px; font-size: 12px; }
+.kanban-card .card-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
+.kanban-card.selected { outline: 2px solid var(--accent, #8a5a2b); }
+.kanban-empty-hint { color: var(--muted, #999); text-align: center; padding: 14px 6px; font-size: 12px; }
+
+/* ===== 标签 chip ===== */
+.tag-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px;
+  background: var(--panel, #efece5); border-radius: 999px; padding: 1px 9px; }
+.tag-chip button { border: 0; background: transparent; cursor: pointer; color: var(--muted, #888);
+  padding: 0; font-size: 13px; line-height: 1; }
+
+/* ===== 分析页 ===== */
+.analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.stat-card { background: var(--panel, #f6f4ef); border-radius: 10px; padding: 14px 16px; }
+.stat-card .stat-num { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.stat-card .stat-label { color: var(--muted, #777); font-size: 13px; margin-top: 2px; }
+.funnel { display: flex; flex-direction: column; gap: 6px; }
+.funnel-stage { display: grid; grid-template-columns: 92px 1fr 46px; gap: 10px; align-items: center; font-size: 13px; }
+.funnel-bar { height: 16px; border-radius: 4px; background: linear-gradient(90deg, var(--accent, #8a5a2b), #c99b6a); }
+.bar-chart { display: flex; align-items: flex-end; gap: 4px; height: 120px; }
+.bar-chart .bar { flex: 1; min-width: 8px; background: var(--accent, #8a5a2b); opacity: .85;
+  border-radius: 3px 3px 0 0; position: relative; }
+.bar-chart .bar:hover::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 4px);
+  left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 2px 7px;
+  border-radius: 4px; font-size: 11px; white-space: nowrap; }
+.chart-legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted, #777); margin-top: 6px; }
+
+/* ===== 提醒面板 ===== */
+.reminder-item { display: flex; align-items: center; gap: 10px; padding: 9px 4px;
+  border-bottom: 1px solid var(--line, #eee8); font-size: 14px; }
+.reminder-item:last-child { border-bottom: 0; }
+.reminder-item.overdue .due { color: #c0392b; font-weight: 700; }
+.reminder-item.done .title { text-decoration: line-through; color: var(--muted, #999); }
+.reminder-item .due { flex-shrink: 0; font-size: 12px; color: var(--muted, #888); min-width: 64px; }
+.suggestion-item { padding: 9px 10px; border: 1px dashed var(--line, #d8d2c6); border-radius: 8px;
+  margin-top: 8px; font-size: 13px; background: var(--panel, #faf8f4); }
+.suggestion-item .why { color: var(--muted, #888); margin: 2px 0 6px; font-size: 12px; }
+
+/* ===== 面试练习器 ===== */
+.transcript { max-height: 320px; overflow: auto; border: 1px solid var(--line, #e4e0d8);
+  border-radius: 8px; padding: 10px; background: var(--panel, #faf8f4); }
+.turn { margin-bottom: 8px; font-size: 13px; line-height: 1.5; }
+.turn .who { font-weight: 700; margin-right: 6px; }
+.turn.candidate { color: inherit; }
+.turn.interviewer { color: var(--muted, #666); }
+.turn-input { display: flex; gap: 8px; margin-top: 8px; }
+.score-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ===== ATS 报告 ===== */
+.score-ring { display: flex; align-items: center; gap: 14px; }
+.score-ring .big { font-size: 34px; font-weight: 800; }
+.kw-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.kw-chip { font-size: 12px; border-radius: 6px; padding: 2px 8px; border: 1px solid var(--line, #ddd); }
+.kw-chip.hard.miss { border-color: #c0392b; color: #c0392b; }
+.kw-chip.hit { border-color: #2e7d32; color: #2e7d32; }
+.kw-evidence { font-size: 12px; color: var(--muted, #777); margin-top: 3px; }

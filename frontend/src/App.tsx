@@ -1,8 +1,9 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, HashRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
-import { api } from './api'
-import type { Profile } from './types'
+import { api, qs } from './api'
+import type { Job, Profile } from './types'
 import './styles.css'
+import AnalyticsPage from './pages/AnalyticsPage'
 import ApplicationsPage from './pages/ApplicationsPage'
 import Home from './pages/Home'
 import ImportPage from './pages/ImportPage'
@@ -40,6 +41,98 @@ function NotFound() {
       <h3>页面不存在</h3>
       <p>地址可能输错了。回到总览继续。</p>
       <div className="empty-action"><Link className="btn primary" to="/">回总览</Link></div>
+    </div>
+  )
+}
+
+const COMMAND_DESTS = [
+  { to: '/', label: '总览 · 今日提醒与开始清单', hint: '页面' },
+  { to: '/jobs', label: '岗位收件箱', hint: '页面' },
+  { to: '/applications', label: '投递看板', hint: '页面' },
+  { to: '/analytics', label: '求职分析 · 漏斗与洞察', hint: '页面' },
+  { to: '/resume', label: '简历工坊', hint: '页面' },
+  { to: '/offers', label: 'Offer 比较', hint: '页面' },
+  { to: '/profile', label: '我的画像', hint: '页面' },
+  { to: '/import', label: '导入岗位（粘贴 JD）', hint: '页面' },
+  { to: '/settings', label: '设置与隐私 · 备份恢复', hint: '页面' },
+]
+
+/** 全局命令面板（Ctrl/⌘+K）：页面直达 + 岗位搜索跳转。 */
+function CommandPalette() {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const [jobs, setJobs] = useState<Job[]>([])
+  const navigate = useNavigate()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setOpen((v) => !v)
+      }
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 30)
+    else setQ('')
+  }, [open])
+
+  useEffect(() => {
+    if (!open || !q.trim()) {
+      setJobs([])
+      return
+    }
+    const t = setTimeout(() => {
+      api
+        .get<{ items: Job[] }>(`/jobs${qs({ q: q.trim(), limit: 6 })}`)
+        .then((r) => setJobs(r.items))
+        .catch(() => setJobs([]))
+    }, 200) // 防抖：本地 API 也别每键一查
+    return () => clearTimeout(t)
+  }, [q, open])
+
+  const dests = useMemo(
+    () => COMMAND_DESTS.filter((d) => !q.trim() || d.label.toLowerCase().includes(q.trim().toLowerCase())),
+    [q],
+  )
+  if (!open) return null
+  return (
+    <div className="cmdk-overlay" onClick={() => setOpen(false)}>
+      <div className="cmdk" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="命令面板">
+        <input
+          ref={inputRef}
+          className="cmdk-input"
+          placeholder="搜索页面或岗位…（Esc 关闭）"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <div className="cmdk-list">
+          {dests.map((d) => (
+            <button key={d.to} className="cmdk-item" onClick={() => { setOpen(false); navigate(d.to) }}>
+              <span>{d.label}</span><small>{d.hint}</small>
+            </button>
+          ))}
+          {jobs.length > 0 && <div className="cmdk-section">岗位</div>}
+          {jobs.map((j) => (
+            <button
+              key={j.id}
+              className="cmdk-item"
+              onClick={() => { setOpen(false); navigate(`/jobs/${j.id}`) }}
+            >
+              <span>{j.title} · {j.employer_name}</span>
+              <small>{j.city || ''}</small>
+            </button>
+          ))}
+          {!dests.length && !jobs.length && (
+            <div className="cmdk-empty">没有匹配的页面或岗位</div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -127,6 +220,7 @@ export default function App() {
               <div className="nav-group">求职推进</div>
               <NavLink to="/jobs" className={navCls}>岗位收件箱</NavLink>
               <NavLink to="/applications" className={navCls}>投递看板</NavLink>
+              <NavLink to="/analytics" className={navCls}>求职分析</NavLink>
               <NavLink to="/resume" className={navCls}>简历</NavLink>
               <NavLink to="/offers" className={navCls}>Offer 比较</NavLink>
               <div className="nav-group">系统</div>
@@ -147,6 +241,7 @@ export default function App() {
                 <Route path="/jobs/:jobId" element={<JobDetailPage />} />
                 <Route path="/import" element={<ImportPage />} />
                 <Route path="/applications" element={<ApplicationsPage />} />
+                <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/resume" element={<ResumePage />} />
                 <Route path="/offers" element={<OffersPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
@@ -155,6 +250,7 @@ export default function App() {
               </Routes>
             </main>
           </div>
+          <CommandPalette />
         </Router>
       </ToastProvider>
     </Ctx.Provider>

@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Job Hater 助手（本地）",
+  "version": "1.0.0",
+  "description": "把任意网页的岗位描述一键存进本地 Job Hater；网申表单一键填基础信息（只填充并高亮，永不自动提交）。数据只发往你本机的 Job Hater 服务。",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Job Hater 助手",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service_worker.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

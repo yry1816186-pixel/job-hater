@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { --ink: #26221e; --muted: #77706a; --accent: #c07a2e; --line: #e4ded4; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 340px; font: 13px/1.5 "Microsoft YaHei", "PingFang SC", sans-serif;
+         color: var(--ink); padding: 12px; }
+  h1 { font-size: 15px; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  h1 .dot { width: 9px; height: 9px; border-radius: 50%; background: #bbb; }
+  h1 .dot.ok { background: #3d9970; }
+  h1 .dot.bad { background: #c0392b; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .status { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; }
+  button { flex: 1; padding: 9px 6px; font-size: 13px; border: 1px solid var(--line);
+           border-radius: 8px; background: #faf8f4; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .draft { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
+  .draft input { width: 100%; margin: 3px 0; padding: 5px 7px; border: 1px solid var(--line);
+                 border-radius: 6px; font-size: 13px; }
+  .ok-box { color: #2e7d32; margin-top: 6px; font-size: 12.5px; }
+  .err-box { color: #c0392b; margin-top: 6px; font-size: 12.5px; white-space: pre-wrap; }
+  details { margin-top: 8px; font-size: 12px; }
+  input.api { width: 100%; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; }
+  .fill-report { margin-top: 6px; font-size: 12px; }
+  .fill-report li { margin-left: 16px; }
+</style>
+</head>
+<body>
+  <h1><span class="dot" id="dot"></span> Job Hater 助手 <span class="muted" id="ver" style="font-weight:400"></span></h1>
+
+  <div class="status" id="status">正在连接本机服务…</div>
+
+  <div class="row">
+    <button id="capture" disabled>📄 抓取本页为 JD 草稿</button>
+    <button id="fill" disabled>✍️ 填写本页表单</button>
+  </div>
+
+  <div id="draftArea"></div>
+  <div id="fillReport"></div>
+
+  <details>
+    <summary class="muted" style="cursor:pointer">设置（API 地址 / 画像）</summary>
+    <div style="margin-top:6px">
+      <label class="muted">本机服务地址</label>
+      <input class="api" id="apiBase" />
+      <label class="muted" style="display:block;margin-top:6px">填充用画像</label>
+      <select id="profileSel" style="width:100%;padding:5px"></select>
+      <p class="muted" style="margin-top:8px">
+        隐私：扩展只与本机服务通信；不收集任何数据；填表只填充并高亮，<b>永不自动提交</b>。
+      </p>
+    </div>
+  </details>
+
+  <script src="popup.js"></script>
+</body>
+</html>

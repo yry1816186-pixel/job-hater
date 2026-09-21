@@ -137,11 +137,153 @@ export interface Application {
   applied_at?: string | null
   apply_channel?: string | null
   notes?: string | null
+  tags: string[]
   updated_at?: string | null
   /** 列表接口嵌岗位于（可辨识名字，替代裸 job_id） */
   job_title?: string | null
   employer_name?: string | null
   job_city?: string | null
+}
+
+export interface Contact {
+  id: number
+  application_id?: string | null
+  employer_id?: string | null
+  name: string
+  role?: string | null
+  phone?: string | null
+  email?: string | null
+  wechat?: string | null
+  note?: string | null
+  job_title?: string | null
+  employer_name?: string | null
+}
+
+export interface Reminder {
+  id: number
+  owner_kind: 'application' | 'interview' | 'offer'
+  owner_id: string
+  due_at: string
+  kind?: string | null
+  title: string
+  done: boolean
+  owner_title?: string | null
+  owner_employer?: string | null
+  owner_round?: number | null
+  owner_salary_k?: number | null
+}
+
+export interface ReminderSuggestion {
+  kind: string
+  owner_kind: 'application' | 'interview' | 'offer'
+  owner_id: string
+  title: string
+  due_at: string
+  reason: string
+}
+
+export interface InterviewSessionInfo {
+  id: string
+  interview_id: string
+  mode: string
+  persona?: string | null
+  difficulty?: number | null
+  started_at?: string | null
+  ended_at?: string | null
+  transcript: Array<{ role: 'interviewer' | 'candidate'; content: string; at: string }>
+}
+
+export interface InterviewSessionStats {
+  session_id: string
+  ended: boolean
+  turns: number
+  questions: number
+  answers: number
+  unanswered_trailing: number
+  answer_chars: { avg: number; min: number; max: number }
+  duration_min?: number | null
+}
+
+export interface InterviewReviewInfo {
+  id: string
+  session_id: string
+  overall?: number | null
+  scores: Record<string, number>
+  strengths: string[]
+  gaps: string[]
+  practice_items: string[]
+  ai_generated: boolean
+}
+
+export interface StatsFunnel {
+  discovered: number
+  applied: number
+  interviewed: number
+  offered: number
+  applied_rate?: number | null
+  interview_rate?: number | null
+  offer_rate?: number | null
+}
+
+export interface StatsOverview {
+  total: number
+  by_status: Record<string, number>
+  funnel: StatsFunnel
+  weekly: Array<{ week: string; applications: number; interviews: number; events: number }>
+  health: {
+    stale_applications: number
+    upcoming_interviews_7d: number
+    pending_offers: number
+    deadlines_7d: number
+  }
+  sources: Array<{ source: string; name: string; jobs: number; applications: number; interviews: number }>
+  top_employers: Array<{ employer: string; n: number; progressed: number }>
+  generated_at: string
+}
+
+export interface SalaryInsights {
+  sample_size: number
+  note: string
+  overall: { p25: number; p50: number; p75: number; count: number }
+  by_city: Array<{ city: string; count: number; p25: number; p50: number; p75: number }>
+}
+
+export interface ATSKeywordEntry {
+  term: string
+  category: 'hard' | 'soft' | 'other'
+  jd_count: number
+  in_title: boolean
+  weight: number
+  hits?: Array<{ section: string; count: number; snippet: string }>
+  resume_count?: number
+}
+
+export interface ATSScanReport {
+  job_id: string
+  resume_version_id: string
+  score: number
+  target: number
+  band: string
+  coverage: {
+    score: number
+    by_category: Record<string, { covered: number; total: number; ratio?: number; score: number; note?: string }>
+  }
+  parseability: {
+    score: number
+    checks: Array<{ item: string; ok: boolean; score: number; fix: string }>
+  }
+  keywords: {
+    matched: ATSKeywordEntry[]
+    missing: ATSKeywordEntry[]
+    hard_missing: string[]
+  }
+  advisory: Array<{ kind: string; title: string; detail: string }>
+  methodology: { counted: string[]; advisory_only: string[]; note: string }
+}
+
+export interface SavedSearch {
+  name: string
+  params: Record<string, string | number | boolean | undefined>
 }
 
 export interface ApplicationEvent {
