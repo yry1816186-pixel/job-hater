@@ -76,7 +76,9 @@ def _build_account_env(root: Path, key: bytes) -> object:
         message_dbs=[msg_dir / "message_0.db"], contact_dbs=[ct_dir / "contact.db"],
         total_db_bytes=1000,
     )
-    env = WeChatEnv(installed=True, data_root=root, accounts=[account], weixin_pids=[1])
+    # platform_ok 显式 True：E2E 测的是扫描管线本身（解密→解析→识别），
+    # 与运行平台无关——否则非 Windows 上 blockers 会正确拦截扫描
+    env = WeChatEnv(platform_ok=True, installed=True, data_root=root, accounts=[account], weixin_pids=[1])
     return env
 
 

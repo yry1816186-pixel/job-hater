@@ -51,15 +51,20 @@ class WeChatEnv:
 
     @property
     def blockers(self) -> list[str]:
-        """阻塞自动扫描的原因（面向用户可读）。"""
+        """阻塞自动扫描的原因（面向用户可读）。
+
+        基于 self.platform_ok 而非直接读环境：快照对象须自洽——
+        detect() 真实构造时 platform_ok=WIN，行为不变；测试/离线场景
+        构造的假想环境也能正确表达「平台 OK」。
+        """
         out: list[str] = []
-        if not WIN:
+        if not self.platform_ok:
             out.append("当前不是 Windows 系统（微信本地库解密仅支持 Windows 微信 4.x 桌面版）")
-        if WIN and not self.installed:
+        if self.platform_ok and not self.installed:
             out.append("未检测到微信 4.x（Weixin）安装")
-        if WIN and self.installed and not self.accounts:
+        if self.platform_ok and self.installed and not self.accounts:
             out.append("找到微信但未发现本地账号数据（可能从未在此设备登录）")
-        if WIN and self.accounts and not self.weixin_pids:
+        if self.platform_ok and self.accounts and not self.weixin_pids:
             out.append("微信未运行——密钥提取需要已登录的微信进程，请先打开微信并登录")
         return out
 
