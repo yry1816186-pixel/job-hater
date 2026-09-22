@@ -2,6 +2,44 @@
 
 格式遵循 Keep a Changelog；版本遵循语义化版本（SEMVER）。
 
+## [Unreleased]
+
+v4.0「证据与供给」批次启动（蓝图见 docs/V4_BLUEPRINT.md）。B1 JD 补全引擎：
+治第一病灶「89% 存量岗无 JD 正文」——匹配引擎此前只能打在标题上。
+
+### Added
+- **JD 补全 provider 注册表**（`jobhater/services/enrich/providers.py`）：六路
+  官方信源「URL → 岗位标识 → JD 原文」，端点全部活体验证（复现脚本
+  `scripts/probe_jd_apis.py`，Playwright 抓真实 XHR）：
+  - `byteportal`（字节系门户框架，一套 API 覆盖字节/小米/飞书招聘板）：
+    `GET /api/v1/job/posts/{id}` → `description/requirement`；
+  - `zhiye`（北森）：`GetJobAdInfo` → `Duty/Require`；
+  - `mihoyo`：`ats-portal/v1/job/info` POST；
+  - `baidu`：SSR HTML `post-content-*__` 块直读（相对跳转 urljoin 解析 +
+    同域限界 + 官方 404 识别为「岗位已下线」）；
+  - `netease163`：URL 的 id 是批次非岗位号——列表 API 分页拉取 + 标题归一化
+    匹配（防串岗：不匹配记 `no_match`，绝不把别岗正文挂错岗）；
+  - `wechat`：复用公众号深挖通道（requests 缺失时如实降级）。
+  安全立场：只请求注册表内官方域（点号边界后缀匹配防仿冒域），ID 注入前
+  字符集校验，不抓商业招聘板（51job/猎聘等合规红线）。
+- **补全引擎**（`engine.py`）：断点续跑（pending 真相源在库内：active+有
+  URL+无正文+attempts<3，进程随时可杀重启自动续）；per-host 节流 1.2s；
+  网络名额与记账分离（列表页/短链只记账不占名额，防新行饿死可直读旧行）；
+  补全后同步重建 FTS search_text；账本表 `jd_enrich_log`（迁移 0005）。
+- **API**：`POST /api/jobs/{id}/enrich`（单条，详情页「拉取 JD 原文」）、
+  `POST /api/enrichment/run`（批量，limit≤500，支持 provider 定向）、
+  `GET /api/enrichment/stats`（覆盖率与逐 provider 账本）。
+- **CLI**：`job-hater enrich [--limit N] [--provider ID] [--stats]`。
+- **测试**（24 例）：六 provider 真实响应 fixture 回放（tests/fixtures/enrich/）、
+  URL 解析安全（仿冒域/列表页/非法 ID）、163 标题防串岗、断点续跑、重试
+  上限、定向运行饿死回归、百度相对重定向解析、API 端点全链。
+
+### 验收证据（LIVE，真实库 2026-09-23）
+- 存量批量补全 296+ 条全成功（zhiye 60+199、字节 20、mihoyo 6、163 11），
+  覆盖率 24.4%→30.4% 起步，六路 provider 定向清尾运行中；
+- 节流实测 ~1.2s/条符合设计；百度死链 3 条被正确识别（官方 404）；
+- 全量门禁：226 pytest / ruff 全绿。
+
 ## [3.2.0] - 2026-09-22
 
 微信本地数据源批次：新增「微信招聘雷达」，自动检测本机微信 4.x（Windows 桌面版）

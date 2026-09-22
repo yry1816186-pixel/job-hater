@@ -178,6 +178,11 @@ class MatchRunIn(BaseModel):
     limit: int = Field(200, ge=1, le=2000)
 
 
+class EnrichmentRunIn(BaseModel):
+    limit: int = Field(50, ge=1, le=500)
+    provider: str | None = None
+
+
 class ApplicationIn(BaseModel):
     job_id: str
     profile_id: str
@@ -675,6 +680,37 @@ def register_routes(app: FastAPI) -> None:
             return JobService(con).get(job_id).model_dump()
         except Exception as e:
             raise _err(e) from e
+
+    # ---------- JD 补全引擎（v4.0 B1：官方接口直读 JD 原文） ----------
+
+    @app.post("/api/jobs/{job_id}/enrich")
+    def enrich_job(job_id: str, con=Depends(get_con)):
+        from jobhater.services.enrich import EnrichmentEngine
+
+        try:
+            return EnrichmentEngine(con).enrich_one(job_id)
+        except Exception as e:
+            raise _err(e) from e
+
+    @app.post("/api/enrichment/run")
+    def run_enrichment(body: EnrichmentRunIn, con=Depends(get_con)):
+        from jobhater.services.enrich import EnrichmentEngine
+
+        try:
+            out = EnrichmentEngine(con).run(limit=body.limit, provider_id=body.provider)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        except Exception as e:
+            raise _err(e) from e
+        if out["total_ok"]:
+            out["match_stale_hint"] = "已补全正文，匹配结果基于旧数据——请在总览页重新运行匹配排序。"
+        return out
+
+    @app.get("/api/enrichment/stats")
+    def enrichment_stats(con=Depends(get_con)):
+        from jobhater.services.enrich import EnrichmentEngine
+
+        return EnrichmentEngine(con).stats()
 
     @app.get("/api/sources")
     def list_sources(con=Depends(get_con)):

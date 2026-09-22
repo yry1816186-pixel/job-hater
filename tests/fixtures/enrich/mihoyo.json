@@ -1,0 +1,41 @@
+{
+ "code": 0,
+ "message": "",
+ "traceId": "",
+ "data": {
+  "id": "7399",
+  "code": "",
+  "title": "市场营销实习生（AI方向）-崩坏：星穹铁道+崩坏：因缘精灵",
+  "addressDetailList": [
+   {
+    "addressId": "8",
+    "addressDetail": "上海"
+   }
+  ],
+  "competencyTypeId": "6",
+  "competencyType": "市场&商务类",
+  "jobNatureId": 3,
+  "jobNature": "实习",
+  "projectName": "实习生专项",
+  "description": "1、研究前沿AI技术，探索其在游戏市场营销管线中的应用场景。\n2、共同迭代现有市场内容创作及分发模式，打造更精准、更高效、满足多场景交付的内容生态模型。\n3、利用AI工具，设计、辅助、优化市场内容生产工作流，提升内容生产环节效率。\n4、基于具体需求，协同程序和算法团队推动技术方案，结合业务场景进行技术选型与模型调优。",
+  "jobRequire": "1、信息与计算科学、数据科学与大数据、人工智能等相关专业背景优先。\n2、关注游戏行业市场营销动作，对AI与市场营销结合的探索有兴趣。\n3、关注生成式人工智能前沿动作，深度体验且进行过融入工作流的相关实践。\n4、有AI产品、AI游戏深度体验或开发经验者优先。\n5、具有开拓精神和owner意识，沟通清晰且执行力强。",
+  "addition": "",
+  "deliveryInstructions": "如有相关作品请于附件中展示",
+  "hadDelivery": 0,
+  "status": 1,
+  "channelDetailIds": [
+   1,
+   2
+  ],
+  "objectId": "24",
+  "objectName": "2028届及之后毕业的在校生",
+  "projectId": 4,
+  "hireType": 1,
+  "hireTypeName": "校园招聘",
+  "hurry": false,
+  "tagList": [],
+  "jobSummary": ""
+ },
+ "success": true,
+ "error": false
+}

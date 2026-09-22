@@ -37,6 +37,10 @@ def main(argv: list[str] | None = None) -> int:
     p_paste = sub.add_parser("paste", help="从 stdin 读 JD 原文解析入库（粘贴主链的 CLI 入口）")
     p_paste.add_argument("--save", action="store_true", help="直接入库（默认只打印草稿）")
     p_paste.add_argument("--url", default=None, help="岗位链接（可选）")
+    p_enrich = sub.add_parser("enrich", help="批量补全岗位 JD 原文（官方接口直读，可中断续跑）")
+    p_enrich.add_argument("--limit", type=int, default=50, help="本次最多处理条数")
+    p_enrich.add_argument("--provider", default=None, help="只跑指定 provider（byteportal/zhiye/…）")
+    p_enrich.add_argument("--stats", action="store_true", help="只看覆盖率统计，不跑补全")
     p_jobs = sub.add_parser("jobs", help="列出/检索岗位")
     p_jobs.add_argument("--q", default="", help="检索词")
     p_jobs.add_argument("--limit", type=int, default=30)
@@ -194,6 +198,31 @@ def main(argv: list[str] | None = None) -> int:
                    if k not in ("parse_notes", "needs_review_fields")}
             stats = JobService(con).ingest([raw], source_id="manual")
             print(f"收到 {stats.received}：入库 {stats.added}，去重 {stats.deduped_exact}")
+            return 0
+
+        if args.cmd == "enrich":
+            from jobhater.services.enrich import EnrichmentEngine
+
+            engine = EnrichmentEngine(con)
+            if args.stats:
+                st = engine.stats()
+                print(f"在库 {st['active_jobs']} 岗，已有 JD 正文 {st['with_jd']}"
+                      f"（覆盖率 {st['coverage_pct']}%）")
+                for provider, log in sorted(st["log"].items()):
+                    print(f"  {provider}: {log}")
+                return 0
+            try:
+                out = engine.run(limit=args.limit, provider_id=args.provider)
+            except ValueError as e:
+                print(f"❌ {e}", file=sys.stderr)
+                return 2
+            print(f"补全成功 {out['total_ok']}，失败 {out['total_failed']}，"
+                  f"标题不匹配 {out['total_no_match']}")
+            for pid, s in out["providers"].items():
+                print(f"  {pid}: ok={s['ok']} failed={s['failed']} no_match={s['no_match']}"
+                      f"（正文 {s['jd_chars']} 字符）")
+            if out["total_ok"]:
+                print("提示：匹配结果基于旧数据——运行 `job-hater match` 或在总览页重新匹配。")
             return 0
 
         if args.cmd == "jobs":

@@ -1075,6 +1075,31 @@ export default function JobDetailPage() {
   const [myFeedback, setMyFeedback] = useState<FeedbackKind[]>([])
   const [questions, setQuestions] = useState<InterviewQuestions | null>(null)
   const [err, setErr] = useState('')
+  const [enriching, setEnriching] = useState(false)
+
+  const enrichJd = async () => {
+    if (!job || enriching) return
+    setEnriching(true)
+    try {
+      const r = await api.post<{ ok: boolean; jd_chars?: number; error?: string; match_mode?: string }>(
+        `/jobs/${job.id}/enrich`,
+      )
+      if (r.ok) {
+        toast(
+          'success',
+          `已拉取 JD 原文（${r.jd_chars ?? 0} 字符）` +
+            (r.match_mode === 'fuzzy' ? '——按标题匹配，建议核对岗位名' : ''),
+        )
+        load()
+      } else {
+        toast('error', r.error ?? '拉取失败')
+      }
+    } catch (e) {
+      toast('error', (e as Error).message)
+    } finally {
+      setEnriching(false)
+    }
+  }
 
   const load = () => {
     api
@@ -1256,6 +1281,13 @@ export default function JobDetailPage() {
       <InterviewPracticePanel app={app} questions={questions} />
 
       <h2>岗位描述（原文）</h2>
+      {!job.description && job.canonical_url && (
+        <p>
+          <button className="btn" onClick={enrichJd} disabled={enriching}>
+            {enriching ? '正在从官网拉取…' : '⤓ 从官网拉取 JD 原文'}
+          </button>
+        </p>
+      )}
       <div className="card" style={{ whiteSpace: 'pre-wrap' }}>
         {job.description || '（无描述——导入时未提供。可在原始页面查看后补充。）'}
       </div>
