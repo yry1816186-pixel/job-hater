@@ -266,6 +266,102 @@ def test_parser_skips_unknown_tables(tmp_path: Path):
     assert list(iter_messages([msg_db], {})) == []
 
 
+def test_parser_flagged_local_type_and_appmsg(tmp_path: Path):
+    """v4 低位掩码解码 + 49 型 appmsg XML 文本化（实测暴露的两类漏源）。"""
+    room = "room@chatroom"
+    msg_db = tmp_path / "message_0.db"
+    # 21474836481 = 5×2^32+1（带 flag 的文本）；244813135921 低位=49（flag 变体卡片）；4294967345 纯 49
+    appmsg_xml = (
+        'wxid_alice:\n<?xml version="1.0"?>\n<msg><appmsg><title>'
+        "【字节跳动】2027届校园招聘正式启动</title><des>面向2027届毕业生，技术/产品/运营岗"
+        '</des><url>https://jobs.bytedance.com/campus</url></appmsg></msg>'
+    )
+    flagged_card = 'wxid_alice:\n<msg><appmsg><title>搜狐畅游2027暑期实习</title></appmsg></msg>'
+    _mk_msg_db(
+        msg_db,
+        room,
+        [
+            (21474836481, 7, 1700000000, 0, "wxid_alice:\n联想2027届秋招启动，供应链岗"),
+            (4294967345, 7, 1700000060, 0, appmsg_xml),
+            (244813135921, 7, 1700000120, 0, flagged_card),
+            (3, 7, 1700000100, 0, "wxid_alice:\n[图片]"),  # 低位=3 过滤
+        ],
+        with_name2id={7: "wxid_alice"},
+    )
+    contact_db = tmp_path / "contact.db"
+    _mk_contact_db(contact_db, [(room, "", "测试群", "", 2), ("wxid_alice", "", "", "Alice", 1)])
+    from jobhater.services.wechat.parser import iter_messages, load_contacts
+
+    msgs = list(iter_messages([msg_db], load_contacts(contact_db)))
+    assert len(msgs) == 3, [m.content for m in msgs]
+    text = next(m for m in msgs if "联想" in m.content)
+    assert text.msg_type == 1 and "联想" in text.content
+    card = next(m for m in msgs if "字节" in m.content)
+    assert card.msg_type == 49
+    assert card.content.startswith("【字节跳动】2027届校园招聘正式启动")
+    assert "面向2027届毕业生" in card.content and "jobs.bytedance.com" in card.content
+    assert "<appmsg>" not in card.content  # XML 已文本化
+    flagged = next(m for m in msgs if "搜狐畅游" in m.content)
+    assert flagged.msg_type == 49 and flagged.content == "搜狐畅游2027暑期实习"
+
+
+def test_appmsg_to_text_edge_cases():
+    """非 XML 原样返回；视频号 ##token## 噪声标题过滤；实体反转义；CDATA 剥离。"""
+    from jobhater.services.wechat.parser import appmsg_to_text
+
+    assert appmsg_to_text("普通文本不走提取") == "普通文本不走提取"
+    noisy = "<msg><appmsg><title>##X4oZ6vla##我在快手看的视频</title><des>分享</des></appmsg></msg>"
+    assert "##" not in appmsg_to_text(noisy)
+    esc = '<msg><appmsg><title>A&amp;B公司 &lt;2027校招&gt;</title></appmsg></msg>'
+    assert "A&B公司 <2027校招>" in appmsg_to_text(esc)
+    cdata = "<msg><appmsg><title><![CDATA[招聘 | 中兴通讯2027届未来领军人才招聘]]></title><des><![CDATA[]]></des></appmsg></msg>"
+    got = appmsg_to_text(cdata)
+    assert got == "招聘 | 中兴通讯2027届未来领军人才招聘", got
+
+
+def test_recruit_card_title_company():
+    """公众号卡片标题模式：「招聘丨公司NNNN届…」抽出公司（去重键不塌缩的前提）。"""
+    from jobhater.services.wechat.recruit import analyze, extract_company
+
+    c, src = extract_company("招聘丨宇树科技2027届校园招聘正式启动")
+    assert c == "宇树科技" and src == "卡片标题模式"
+    c2, _ = extract_company("实习 | 特斯拉2027届T-STAR实习生项目正式启动")
+    assert c2 == "特斯拉"
+    # 正常文本不受影响（品牌/后缀路径优先级不变）
+    c3, s3 = extract_company("联想2027届秋招全面启动！网申开启")
+    assert c3 == "联想" and s3 == "企业名词典"
+    # 端到端：卡片标题消息应产出含公司与届别的命中
+    hit = analyze("招聘 | 平安银行2027届暑期实习生招聘启动\nhttps://mp.weixin.qq.com/s/abc")
+    assert hit is not None and hit.company == "平安银行" and hit.cohort == 2027
+
+
+# ==================== 图片 OCR 通道（cache 明文图） ====================
+
+
+def test_ocr_parse_jsonl(tmp_path):
+    """worker JSONL 解析：正常行/坏行/BOM/空文本过滤。"""
+    from jobhater.services.wechat.ocr import parse_ocr_jsonl
+
+    f = tmp_path / "o.jsonl"
+    f.write_bytes(
+        b"\xef\xbb\xbf"  # BOM
+        b'{"file": "a.jpg", "size": 100, "mtime": "2026-09-01", "text": "\xe9\xa1\xba\xe4\xb8\xb0\xe9\x9b\x86\xe5\x9b\xa22027\xe5\xb1\x8a\xe6\xa0\xa1\xe6\x8b\x9b\xe8\x81\x98"}\n'
+        b'{"file": "b.jpg", "text": ""}\n'
+        b"not-json\n"
+    )
+    hits = parse_ocr_jsonl(f)
+    assert len(hits) == 1 and hits[0].mtime == "2026-09-01" and "2027" in hits[0].text
+
+
+def test_ocr_ocr_text_into_recruit():
+    """OCR 文本（字间空格已被 worker 压缩）应能进识别引擎产出命中。"""
+    from jobhater.services.wechat.recruit import analyze
+
+    text = "顺丰集团2027届全球校园招聘一切由你创造 网申通道已开启 扫码投递"
+    hit = analyze(text)
+    assert hit is not None and hit.company == "顺丰" and hit.cohort == 2027
+
+
 # ==================== 服务层 analyze（burst 合并） ====================
 
 

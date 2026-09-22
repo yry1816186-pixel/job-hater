@@ -9,8 +9,10 @@
   另有 ``Name2Id(id, username)`` 映射表；
 - ``message_content``：明文 TEXT 或 zstd 压缩 BLOB（魔数 ``28 b5 2f fd``）；
   群聊内容格式 ``"<发送者wxid>:\\n<正文>"``；
-- local_type：1=文本 3=图片 34=语音 42=名片 43=视频 47=表情 49=链接/文件
-  49/待细分=公众号图文 10000=系统提示。
+- local_type：低 32 位是真实类型，高位是 v4 的 flag 组合（如 244813135921
+  的低位=1 文本）——**必须先掩码再判型**，否则约 14% 带标志消息被漏：
+  1=文本 3=图片 34=语音 42=名片 43=视频 47=表情 49=链接/文件卡片
+  10000=系统提示。
 
 本模块只做「读已解密库」这一件事，输出 :class:`WeChatMessage` 流；
 招聘识别在 ``recruit.py``，编排与入库在 ``service.py``。
@@ -18,6 +20,8 @@
 from __future__ import annotations
 
 import hashlib
+import html
+import re
 import sqlite3
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -26,8 +30,49 @@ from pathlib import Path
 
 ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 
-# 值得进入分析视野的消息类型（文本/公众号图文/链接卡片/名片）
+# v4 local_type 高位是 flag 组合，低位才是真实消息类型
+TYPE_MASK = 0xFFFFFFFF
+
+# 值得进入分析视野的消息类型（文本/链接卡片/公众号图文/名片）
 ANALYZABLE_TYPES = {1, 49, 42}
+
+# appmsg（type 49 链接/文件卡片）XML → 文本化：标题+摘要+链接是招聘信息金矿
+_APPMSG_TITLE_RE = re.compile(r"<title>(.*?)</title>", re.DOTALL)
+_APPMSG_DES_RE = re.compile(r"<des>(.*?)</des>", re.DOTALL)
+_APPMSG_URL_RE = re.compile(r"<url>(.*?)</url>", re.DOTALL)
+
+
+def _clean_xml_text(s: str) -> str:
+    """剥 CDATA 包裹 + XML 实体反转义（公众号图文的 title/des 常带 <![CDATA[…]]>）。"""
+    s = s.strip()
+    if s.startswith("<![CDATA[") and s.endswith("]]>"):
+        s = s[9:-3]
+    return html.unescape(s).strip()
+
+
+def appmsg_to_text(content: str) -> str:
+    """49 型卡片 XML → 「标题\\n摘要\\n链接」纯文本（非 XML 原样返回）。
+
+    公众号图文的 title 常是「XX公司2027校招启动」，des 是摘要——正是
+    识别引擎要的输入；文件卡片的 title 是文件名，无意图词时自然不过阈值。
+    """
+    stripped = content.lstrip()
+    if not (stripped.startswith("<?xml") or stripped.startswith("<msg")):
+        return content
+    parts: list[str] = []
+    if m := _APPMSG_TITLE_RE.search(content):
+        t = _clean_xml_text(m.group(1))
+        if t and not t.startswith("##"):  # "##token##" 是视频号噪声前缀
+            parts.append(t)
+    if m := _APPMSG_DES_RE.search(content):
+        d = _clean_xml_text(m.group(1))
+        if d:
+            parts.append(d)
+    if m := _APPMSG_URL_RE.search(content):
+        u = html.unescape(m.group(1)).strip()
+        if u.startswith("http"):
+            parts.append(u)
+    return "\n".join(parts) if parts else content
 
 
 def _try_zstd(data: bytes) -> bytes:
@@ -150,7 +195,8 @@ def iter_messages(
                 except sqlite3.OperationalError:
                     continue
                 for local_type, sender_id, create_time, _status, raw in rows:
-                    if local_type not in wanted or create_time is None:
+                    real_type = local_type & TYPE_MASK if local_type is not None else 0
+                    if real_type not in wanted or create_time is None:
                         continue
                     sender = name2id.get(sender_id, "" if sender_id is None else str(sender_id))
                     content = _try_zstd(raw) if isinstance(raw, (bytes, bytearray)) else (raw or "")
@@ -161,6 +207,8 @@ def iter_messages(
                         if head:
                             sender = head.strip()
                             content = body
+                    if real_type == 49:
+                        content = appmsg_to_text(content)
                     sender_info = contacts.get(sender, {})
                     is_self = (not is_room and talker == self_wxid) or sender == self_wxid
                     yield WeChatMessage(
@@ -170,7 +218,7 @@ def iter_messages(
                         sender=sender or talker,
                         sender_name=sender_info.get("name", sender or talker_name),
                         is_self=is_self,
-                        msg_type=local_type,
+                        msg_type=real_type,
                         create_time=int(create_time),
                         content=content.strip(),
                     )

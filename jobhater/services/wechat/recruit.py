@@ -106,6 +106,11 @@ _BRANDS_BY_LEN = tuple(sorted(KNOWN_BRANDS, key=len, reverse=True))
 LABEL_TITLE_RE = re.compile(
     r"(?:岗位|职位|职务|position|role|title)[名称]?\s*[:：]\s*([^\n，,；;。]{2,40})"
 )
+# 公众号卡片标题模式：「招聘丨中兴通讯2027届未来领军人才招聘正式启动」——
+# 无标签行、无公司后缀时的公司抽取主路径（否则 company=None 导致去重键塌缩）
+CARD_TITLE_RE = re.compile(
+    r"(?:招聘|实习|校招|宣讲|内推)[丨|｜\s:：]*([^\s，,。！!?？:：]{2,24}?)\s*((?:20\d{2})届)"
+)
 LABEL_CITY_RE = re.compile(r"(?:城市|地点|工作地|base|Base|BASE)[：:\s]*([^\n，,；;。]{2,30})")
 LABEL_SALARY_RE = re.compile(r"(?:薪资|薪酬|待遇|工资|salary)[：:\s]*([^\n，,；;。]{2,30})")
 
@@ -165,6 +170,10 @@ def extract_company(text: str, sender_name: str | None = None) -> tuple[str | No
             return name, "标签行"
     if brand := next((b for b in _BRANDS_BY_LEN if b in text), None):
         return brand, "企业名词典"
+    if m := CARD_TITLE_RE.search(text):
+        name = m.group(1).strip()
+        if 2 <= len(name) <= 24 and not name.startswith("http"):
+            return name, "卡片标题模式"
     if m := COMPANY_SUFFIX_RE.search(text):
         name = (m.group(1) or m.group(2) or "").strip()
         if 2 <= len(name) <= 40:

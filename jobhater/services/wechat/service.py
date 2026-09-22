@@ -28,6 +28,7 @@ from jobhater.services.wechat import recruit as wx_recruit
 from jobhater.services.wechat.decrypt import decrypt_database, verify_key
 from jobhater.services.wechat.detect import detect as detect_env
 from jobhater.services.wechat.keyring_scan import find_key
+from jobhater.services.wechat.ocr import run_ocr
 
 # 同发送者在同一会话内的消息合并窗口（秒）：拆成多条发的 JD 能拼回整体
 BURST_WINDOW_S = 180
@@ -131,7 +132,7 @@ class WeChatService:
     def _run_scan(self, min_confidence: float) -> None:
         try:
             self._scan_impl(min_confidence)
-        except Exception as e:  # noqa: BLE001（后台线程兜底: 任何失败都要可见）
+        except Exception as e:  # noqa: BLE001  # 后台线程兜底: 任何失败都要可见
             self.state.phase = "failed"
             self.state.error = f"{type(e).__name__}: {e}"
             self.state.finished_at = time.time()
@@ -149,9 +150,13 @@ class WeChatService:
         state.accounts = len(env.accounts)
         state.message = f"账号 {account.wxid}，消息库 {len(account.message_dbs)} 个"
 
-        # 2) 密钥提取（全部消息+联系人库的第一页做锚点：每库密钥独立缓存，多锚提高命中面）
+        # 2) 密钥提取（全部消息+联系人+公众号库的第一页做锚点：每库密钥独立缓存，多锚提高命中面）
         state.phase = "extracting_key"
-        want = [("message", p) for p in account.message_dbs] + [("contact", p) for p in account.contact_dbs]
+        want = (
+            [("message", p) for p in account.message_dbs]
+            + [("biz", p) for p in account.biz_dbs]
+            + [("contact", p) for p in account.contact_dbs]
+        )
         anchors = []
         for _kind, db in want:
             try:
@@ -208,13 +213,33 @@ class WeChatService:
         for cdb in contact_dbs:
             try:
                 contacts.update(wx_parser.load_contacts(cdb))
-            except Exception:  # noqa: BLE001（单个库损坏不阻断整体）
+            except Exception:  # noqa: BLE001  # 单个库损坏不阻断整体
                 continue
         state.progress_detail = {"contacts": len(contacts)}
 
         # 5) 招聘识别（含 burst 合并）
         state.phase = "analyzing"
         hits = self._analyze(message_dbs, contacts, account.wxid, min_confidence, state)
+
+        # 5.5) 图片 OCR 增强通道（Windows cache 明文图：海报/截图里的招聘信息；
+        #      .dat 专有容器暂无公开解法，此通道覆盖近期看过的图；失败降级不阻断）
+        try:
+            for oh in run_ocr(account.root / "cache"):
+                hit = wx_recruit.analyze(oh.text)
+                if hit and hit.confidence >= min_confidence:
+                    hits.append({
+                        **hit.to_dict(),
+                        "talker": "image_ocr",
+                        "talker_name": "图片识别（海报/截图）",
+                        "sender_name": "",
+                        "create_time": 0,
+                        "time_str": oh.mtime,
+                        "source_text": f"[图片OCR {oh.mtime}] {oh.text}"[:4000],
+                        "merged": False,
+                    })
+        except Exception as e:  # noqa: BLE001  # 增强通道: 任何失败不阻断主结果
+            state.progress_detail = {"ocr_error": str(e)[:200]}
+        hits.sort(key=lambda h: (-h["confidence"], h.get("create_time") or 0))
         state.hits = len(hits)
 
         # 6) 结果落盘（不含密钥；tmp+rename 原子写，避免轮询读到半文件）
@@ -275,7 +300,8 @@ class WeChatService:
 
         for m in msgs:
             state.messages_total += 1
-            if not m.content or m.is_self or m.msg_type != 1:
+            # 49 型卡片已在 parser 层文本化（title/des/url），与文本同权重进引擎
+            if not m.content or m.is_self or m.msg_type not in (1, 49):
                 continue
             state.messages_analyzed += 1
             # burst: 同会话同发送者且时间相邻
