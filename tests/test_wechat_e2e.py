@@ -97,7 +97,7 @@ def test_scan_pipeline_offline(tmp_path: Path):
         patch("jobhater.services.wechat.service.find_key", return_value=key),
     ):
         status = svc.start_scan()
-        assert status["phase"] in {"detecting", "extracting_key", "decrypting", "parsing", "analyzing", "done"}
+        assert status["phase"] in {"detecting", "extracting_key", "decrypting", "parsing", "analyzing", "done"}, status
         # 等后台线程结束（离线合成数据, 秒级）
         if svc._thread is not None:
             svc._thread.join(timeout=60)
