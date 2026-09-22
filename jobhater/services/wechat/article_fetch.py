@@ -11,8 +11,6 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
-import requests
-
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 _TIMEOUT_S = 12
 _MAX_TEXT = 6000
@@ -22,6 +20,13 @@ _TITLE_RE = re.compile(r"<title>(.*?)</title>", re.DOTALL)
 # 严格要求紧跟闭合标签在真实页面结构变化时会整体失配
 _CONTENT_RE = re.compile(r'<div[^>]*id="js_content"[^>]*>(.*)', re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _requests():
+    """requests 惰性导入：缺失时（最小安装环境）本通道降级为不可用。"""
+    import requests  # noqa: PLC0415  # 可选依赖，避免成为全局硬依赖
+
+    return requests
 
 
 @dataclass
@@ -54,13 +59,16 @@ def extract_article(doc: str) -> tuple[str, str]:
 
 def _fetch_one(url: str) -> Article | None:
     try:
-        r = requests.get(url, headers={"User-Agent": UA}, timeout=_TIMEOUT_S)
+        rq = _requests()
+        r = rq.get(url, headers={"User-Agent": UA}, timeout=_TIMEOUT_S)
         if "环境异常" in r.text:
             return None
         title, text = extract_article(r.text)
         if len(text) > 60:
             return Article(url=url, title=title[:120], text=text[:_MAX_TEXT])
-    except requests.RequestException:
+    except ImportError:
+        return None
+    except Exception:  # noqa: BLE001  # 网络增强通道：任何请求失败静默跳过
         return None
     return None
 

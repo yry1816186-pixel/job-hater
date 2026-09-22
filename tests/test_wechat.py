@@ -393,7 +393,7 @@ def test_article_fetch_offline_no_urls(monkeypatch):
     from jobhater.services.wechat import article_fetch as af
 
     called = []
-    monkeypatch.setattr(af.requests, "get", lambda *a, **k: called.append(1))
+    monkeypatch.setattr(af, "_requests", lambda: (_ for _ in ()).throw(AssertionError("不应发起请求")))
     assert af.fetch_articles([]) == {}
     assert called == []
 
