@@ -20,8 +20,8 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-      - name: 安装（含测试依赖与 MCP 可选组）
-        run: pip install -e ".[dev,mcp]"
+      - name: 安装（含测试依赖与 MCP/微信雷达可选组）
+        run: pip install -e ".[dev,mcp,wechat]"
       - name: Lint（ruff）
         run: python -m ruff check jobhater tests
       - name: 测试（pytest 全量）

@@ -1,6 +1,7 @@
 """微信本地数据源测试：解密往返 / 消息解析 / 招聘识别金样 / 服务编排 / API。"""
 from __future__ import annotations
 
+import importlib.util
 import secrets
 import sqlite3
 import sys
@@ -9,6 +10,13 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
+
+# pycryptodome 是可选 extras（jobhater[wechat]）：产品代码缺失时优雅降级，
+# 加密往返类测试同样跳过；识别/解析/API 测试不依赖它照常运行
+needs_aes = pytest.mark.skipif(
+    importlib.util.find_spec("Crypto") is None,
+    reason="pycryptodome 未安装（可选依赖 jobhater[wechat]）",
+)
 
 from wcdb_fixture import build_wcdb_style_db  # noqa: E402
 
@@ -26,6 +34,7 @@ from jobhater.services.wechat.decrypt import (  # noqa: E402
 @pytest.fixture()
 def enc_pair(tmp_path: Path) -> tuple[Path, Path, bytes]:
     """(明文WCDB库, 加密库, 密钥) — 手造 reserved=80 夹具全程 sqlite 可读。"""
+    pytest.importorskip("Crypto", reason="pycryptodome 未安装（jobhater[wechat] 可选依赖）")
     plain = tmp_path / "wc.db"
     build_wcdb_style_db(plain, 50)
     key = secrets.token_bytes(32)
@@ -388,6 +397,7 @@ def test_api_wechat_import_with_fake_result(tmp_path, monkeypatch):
 # ==================== 密码式验证 / 结构定位 / DLL XOR（社区方法产品化） ====================
 
 
+@needs_aes
 def test_verify_as_password_roundtrip(tmp_path):
     """passphrase → PBKDF2 派生 enc_key 加密 → 密码式验证应还原 enc_key。"""
     import hashlib
@@ -410,6 +420,7 @@ def test_verify_as_password_roundtrip(tmp_path):
     assert verify_as_password(_secrets.token_bytes(32), page1) is None
 
 
+@needs_aes
 def test_find_key_env_password_fallback(tmp_path, monkeypatch):
     """JOBHATER_WECHAT_KEY 传 passphrase 时应走密码式回退并返回派生 enc_key；
     传错误值不得命中（且不进入内存扫描——微信不在场也能用）。"""

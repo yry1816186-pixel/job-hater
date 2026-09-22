@@ -81,6 +81,10 @@ def _build_account_env(root: Path, key: bytes) -> object:
 
 
 def test_scan_pipeline_offline(tmp_path: Path):
+    import pytest
+
+    # 合成库需 pycryptodome 加密（可选依赖 jobhater[wechat]），缺失时降级跳过
+    pytest.importorskip("Crypto", reason="pycryptodome 未安装（jobhater[wechat] 可选依赖）")
     from jobhater import config
 
     config.set_data_dir(tmp_path / "data")
