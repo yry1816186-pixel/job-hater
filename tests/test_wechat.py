@@ -410,6 +410,103 @@ def test_verify_as_password_roundtrip(tmp_path):
     assert verify_as_password(_secrets.token_bytes(32), page1) is None
 
 
+def test_find_key_env_password_fallback(tmp_path, monkeypatch):
+    """JOBHATER_WECHAT_KEY 传 passphrase 时应走密码式回退并返回派生 enc_key；
+    传错误值不得命中（且不进入内存扫描——微信不在场也能用）。"""
+    import hashlib
+    import secrets as _secrets
+
+    from jobhater.services.wechat.decrypt import encrypt_database_for_test
+    from jobhater.services.wechat.keyring_scan import KDF_ITER, find_key
+
+    plain = tmp_path / "e.db"
+    build_wcdb_style_db(plain, 6)
+    pw = _secrets.token_bytes(32)
+    salt = _secrets.token_bytes(16)
+    enc_key = hashlib.pbkdf2_hmac("sha512", pw, salt, KDF_ITER, 32)
+    enc = tmp_path / "e.enc.db"
+    encrypt_database_for_test(plain, enc, enc_key, salt)
+    page1 = enc.read_bytes()[:4096]
+
+    monkeypatch.setenv("JOBHATER_WECHAT_KEY", pw.hex())
+    assert find_key(page1) == enc_key
+
+    # 负例：错误 passphrase 不命中；打桩跳过内存扫描保证测试快且确定
+    import jobhater.services.wechat.keyring_scan as ksm
+
+    monkeypatch.setattr(ksm, "weixin_pids", lambda: [])
+    monkeypatch.setenv("JOBHATER_WECHAT_KEY", _secrets.token_bytes(32).hex())
+    assert find_key(page1) is None
+
+
+# ==================== 实测反馈修复：升学噪声 / 品牌子串 / title 吞链接 ====================
+
+
+def test_recruit_edu_admission_suppressed():
+    """推免/保研招生通知应标记 kind=edu 且置信度被压到导入线（0.5）以下。"""
+    from jobhater.services.wechat.recruit import analyze
+
+    txt = (
+        "【目标院校资讯】院校名称：中国科学院大学\n"
+        "通知名称：中国科学院自动化研究所关于接收2027级推荐免试研究生的工作安排\n"
+        "面向2027届本科毕业生，预推免报名即将开始\n"
+        "通知类型：招生信息\n宣讲会时间另行通知\n联系方式：yzs@ucas.ac.cn\n截止：2026-09-13"
+    )
+    hit = analyze(txt)
+    assert hit is not None, "升学通知仍应可见（雷达页展示）"
+    assert hit.kind == "edu"
+    assert hit.confidence < 0.5, f"升学通知置信度应 <0.5，得 {hit.confidence}"
+    assert any("升学" in e for e in hit.evidence)
+
+
+def test_recruit_normal_campus_not_edu():
+    """真校招 JD 不得被升学规则误伤。"""
+    from jobhater.services.wechat.recruit import analyze
+
+    txt = (
+        "联想2027届秋招全面启动！\n网申-测评-面试-offer\n"
+        "一、公司简介：联想是全球智能设备领导厂商\n"
+        "二、招募岗位：技术、产品与项目、设计、市场与销售、职能、供应链\n"
+        "三、福利待遇：午餐加班餐补贴40/天\n投递：https://talent.lenovo.com.cn"
+    )
+    hit = analyze(txt)
+    assert hit is not None and hit.kind == "campus"
+    assert hit.confidence >= 0.5
+
+
+def test_recruit_brand_longest_match():
+    """「京东方」不得被子串「京东」抢先命中。"""
+    from jobhater.services.wechat.recruit import extract_company
+
+    company, src = extract_company("京东方科技集团(BOE)2027届秋招宣讲-南京站")
+    assert company == "京东方", f"应最长匹配京东方，得 {company}"
+    assert src == "企业名词典"
+    company2, _ = extract_company("京东2027届校招启动，投递简历")
+    assert company2 == "京东"
+
+
+def test_recruit_title_rejects_url():
+    """标签值是链接时不当作岗位名（回退词典或置空）。"""
+    from jobhater.services.wechat.recruit import extract_title
+
+    t, src = extract_title("职位：https://www.kdocs.cn/l/abc123 请填写")
+    assert t is None or "http" not in t
+    t2, _ = extract_title("职位：数据分析师。薪资：面议")
+    assert t2 == "数据分析师"
+
+
+def test_recruit_group_name_not_company():
+    """群名（含「群」字）不得当公司名；真实企业发送者兜底仍可用。"""
+    from jobhater.services.wechat.recruit import extract_company
+
+    c1, _ = extract_company("急招数据分析师，坐标北京，薪资15-25K", sender_name="艺术学院2023级脆皮本科生群")
+    assert c1 is None, f"群名不得成为公司，得 {c1}"
+    c2, _ = extract_company("急招数据分析师，坐标北京", sender_name="长城证券招聘")
+    assert c2 == "长城证券"
+    c3, _ = extract_company("搜狐畅游2026春招+2027暑期实习同步开启")
+    assert c3 == "搜狐畅游", f"应命中搜狐畅游，得 {c3}"
+
+
 def test_looks_like_secret_filter():
     import secrets as _secrets
 

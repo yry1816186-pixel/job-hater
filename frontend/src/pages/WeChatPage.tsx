@@ -63,7 +63,7 @@ const PHASE_LABEL: Record<string, string> = {
 }
 
 const KIND_LABEL: Record<string, string> = {
-  campus: '校招', intern: '实习', social: '社招', unknown: '未分类',
+  campus: '校招', intern: '实习', social: '社招', edu: '升学招生', unknown: '未分类',
 }
 
 function confidenceColor(c: number): string {
@@ -284,6 +284,7 @@ export default function WeChatPage() {
                 <option value="campus">校招</option>
                 <option value="intern">实习</option>
                 <option value="social">社招</option>
+                <option value="edu">升学招生</option>
               </select>
               <label style={{ fontSize: 12.5, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 置信度 ≥ {(minConf * 100).toFixed(0)}%
@@ -304,7 +305,8 @@ export default function WeChatPage() {
             {importMsg && <span style={{ color: 'var(--ok, #2e7d32)' }}>{importMsg}</span>}
           </div>
 
-          {filtered.map((h, i) => (
+          {/* 渲染上限：全量命中数千条时一次渲染会卡死页面；截断展示，筛选后看全部 */}
+          {filtered.slice(0, 100).map((h, i) => (
             <div key={i} className="card" style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                 <b style={{ fontSize: 15 }}>{h.title ?? '（未识别岗位名）'}</b>
@@ -339,6 +341,11 @@ export default function WeChatPage() {
               </details>
             </div>
           ))}
+          {filtered.length > 100 && (
+            <p className="hint" style={{ textAlign: 'center' }}>
+              已显示前 100 条（筛选后共 {filtered.length} 条）——用上方届别/类型/关键词筛选缩小范围
+            </p>
+          )}
         </>
       )}
 

@@ -305,11 +305,10 @@ def find_key(
     第一页可显著提高命中面。密钥命中即返回。找不到返回 None（不抛异常）。
 
     高级通道：环境变量 ``JOBHATER_WECHAT_KEY``（64 位 hex）优先验证——供
-    已知密钥的用户跳过内存扫描；密钥仍只在内存中使用。
+    已知密钥的用户跳过内存扫描；密钥仍只在内存中使用。两种形态都试：
+    直通式（某库 enc_key）优先（验证便宜），密码式（passphrase，每库
+    PBKDF2 派生）回退。该通道不依赖微信进程与平台，可离线使用。
     """
-    api = _api()
-    if api is None:
-        return None
     anchors = [page1] if isinstance(page1, (bytes, bytearray)) else list(page1)
     if not anchors:
         return None
@@ -321,8 +320,16 @@ def find_key(
             cand = bytes.fromhex(env_key)
         except ValueError:
             cand = b""
-        if cand and any(quick_screen(cand, p1) and verify_key(cand, p1) for p1 in anchors):
-            return cand
+        if cand:
+            if any(quick_screen(cand, p1) and verify_key(cand, p1) for p1 in anchors):
+                return cand
+            for p1 in anchors:
+                ek = verify_as_password(cand, p1)
+                if ek is not None:
+                    return ek
+    api = _api()
+    if api is None:
+        return None
     k, _p = api
     targets = weixin_pids()
     prog = ScanProgress(phase="scanning", pids=[pid for pid, _ in targets])

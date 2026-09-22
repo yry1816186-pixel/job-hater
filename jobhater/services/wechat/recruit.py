@@ -31,6 +31,13 @@ KIND_WORDS = {
     "intern": ("实习", "intern", "internship", "日常实习", "暑期实习", "寒假实习", "trainee"),
     "social": ("社招", "社会招聘", "工作经验", "三年以上", "五年以上", "3年以上", "5年以上"),
 }
+# 升学招生信号（推免/保研/夏令营等研究生招生通知——是「升学」不是「就业招聘」；
+# 命中标记 kind="edu" 并大幅压分：雷达页可见但不进岗位库）
+EDU_ADMISSION_WORDS = (
+    "推免", "推荐免试", "免试研究生", "保研", "夏令营", "优秀大学生",
+    "招生简章", "招收攻读", "研究生招生", "推免生", "研究生复试", "预推免",
+)
+EDU_ADMISSION_STRONG = ("推免", "推荐免试", "免试研究生", "预推免", "研究生招生")
 # 求职者方向信号（负分：是「找工作的人」不是「发岗位的人」）
 SEEKER_WORDS = (
     "求内推", "求推荐", "有没有内推", "有无内推", "帮我内推", "可以内推吗", "还能内推吗",
@@ -92,7 +99,10 @@ KNOWN_BRANDS = (
     "中信证券", "中信建投", "国泰君安", "华泰证券", "广发证券", "中金公司", "汇添富", "易方达",
     "普华永道", "德勤", "毕马威", "安永", "麦肯锡", "波士顿咨询", "贝恩", "联合利华", "宝洁",
     "强生", "辉瑞", "罗氏", "诺华", "恒瑞医药", "药明康德", "百济神州", "信达生物", "再鼎医药",
+    "京东方", "搜狐畅游", "搜狐", "新浪", "58同城", "奇安信", "深信服", "TP-LINK",
 )
+# 品牌匹配用最长优先序（否则「京东方」会被子串「京东」抢先命中）
+_BRANDS_BY_LEN = tuple(sorted(KNOWN_BRANDS, key=len, reverse=True))
 LABEL_TITLE_RE = re.compile(
     r"(?:岗位|职位|职务|position|role|title)[名称]?\s*[:：]\s*([^\n，,；;。]{2,40})"
 )
@@ -112,7 +122,7 @@ class RecruitHit:
     salary: str | None = None
     education: str | None = None
     cohort: int | None = None  # 如 2027；None=未提及届别
-    kind: str = "unknown"  # campus / intern / social / unknown
+    kind: str = "unknown"  # campus / intern / social / edu(升学招生) / unknown
     deadline: str | None = None
     apply_method: str | None = None  # 邮箱/链接/内推码（原文摘录）
     confidence: float = 0.0
@@ -134,33 +144,43 @@ def _findall_words(text: str, words: tuple[str, ...]) -> list[str]:
     return [w for w in words if w in low]
 
 
+def _sender_as_company(sender_name: str) -> str | None:
+    """发送者/群名兜底抽公司。群名（含「群」字或明显群名模式）不是公司名，拒绝。"""
+    if not sender_name or "群" in sender_name:
+        return None
+    if m := COMPANY_SUFFIX_RE.search(sender_name):
+        name = (m.group(1) or m.group(2) or "").strip()
+        if 2 <= len(name) <= 40:
+            return name
+    if brand := next((b for b in _BRANDS_BY_LEN if b in sender_name), None):
+        return brand
+    return None
+
+
 def extract_company(text: str, sender_name: str | None = None) -> tuple[str | None, str | None]:
     """抽取公司名。优先标签行，其次裸名词典/后缀模式。返回 (公司名, 依据)。"""
     if m := LABEL_COMPANY_RE.search(text):
         name = m.group(1).strip().removesuffix("招聘").strip()
         if 2 <= len(name) <= 40:
             return name, "标签行"
-    if brand := next((b for b in KNOWN_BRANDS if b in text), None):
+    if brand := next((b for b in _BRANDS_BY_LEN if b in text), None):
         return brand, "企业名词典"
     if m := COMPANY_SUFFIX_RE.search(text):
         name = (m.group(1) or m.group(2) or "").strip()
         if 2 <= len(name) <= 40:
             return name, "公司后缀模式"
-    # 公众号/发送者昵称兜底：如「XX科技招聘」
+    # 公众号/发送者昵称兜底：如「XX科技招聘」（群名已过滤）
     if sender_name:
-        if m := COMPANY_SUFFIX_RE.search(sender_name):
-            name = (m.group(1) or m.group(2) or "").strip()
-            if 2 <= len(name) <= 40:
-                return name, "发送者名称"
-        if brand := next((b for b in KNOWN_BRANDS if b in sender_name), None):
-            return brand, "发送者名称"
+        if name := _sender_as_company(sender_name):
+            return name, "发送者名称"
     return None, None
 
 
 def extract_title(text: str) -> tuple[str | None, str | None]:
     if m := LABEL_TITLE_RE.search(text):
-        t = m.group(1).strip()
-        if 2 <= len(t) <= 40:
+        t = m.group(1).strip().rstrip(".。…·")
+        # 标签值是链接（如「投递：https://…」被职位标签捕获）不是岗位名，跳过
+        if 2 <= len(t) <= 40 and "http" not in t and "www." not in t:
             return t, "标签行"
     hits = _findall_words(text, TITLE_WORDS)
     if hits:
@@ -196,6 +216,9 @@ def analyze(text: str, sender_name: str | None = None, talker_name: str | None =
 
     # ---- 负信号：求职者方向 ----
     seeker_hits = _findall_words(text, SEEKER_WORDS)
+    # ---- 升学招生信号（推免/保研通知常携带届别+宣讲会词，是噪声主源之一）----
+    edu_adm_hits = _findall_words(text, EDU_ADMISSION_WORDS)
+    is_edu_admission = len(edu_adm_hits) >= 2 or any(w in text for w in EDU_ADMISSION_STRONG)
     # ---- 意图信号 ----
     intent_hits = _findall_words(low, INTENT_STRONG)
     # ---- 字段抽取 ----
@@ -282,6 +305,12 @@ def analyze(text: str, sender_name: str | None = None, talker_name: str | None =
         penalty = 0.30 if len(seeker_hits) >= 2 else 0.18
         score -= penalty
         ev.append(f"⚠求职者方向词×{len(seeker_hits)}（{'、'.join(seeker_hits[:2])}）-{penalty}")
+
+    # ---- 升学招生压分（推免/保研通知不是就业岗位；保留雷达可见性，压到岗位库导入线以下）----
+    if is_edu_admission:
+        hit.kind = "edu"
+        score *= 0.45
+        ev.append(f"⚠升学招生信号×{len(edu_adm_hits)}（{'、'.join(edu_adm_hits[:3])}）-压分55%")
 
     hit.confidence = max(0.0, min(1.0, score))
     hit.evidence = ev
