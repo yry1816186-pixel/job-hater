@@ -14,6 +14,7 @@ export default function JobsPage() {
   const [q, setQ] = useState('')
   const [city, setCity] = useState('')
   const [recruit, setRecruit] = useState('')
+  const [cohort, setCohort] = useState('')
   const [sort, setSort] = useState<'recent' | 'match'>('recent')
   const [items, setItems] = useState<Job[]>([])
   const [total, setTotal] = useState(0)
@@ -46,6 +47,7 @@ export default function JobsPage() {
           q,
           city,
           recruitment_type: recruit,
+          graduation_year: cohort || undefined,
           limit: shown,
           sort: useStored ? 'match' : undefined,
           profile_id: useStored ? activeId : undefined,
@@ -81,7 +83,7 @@ export default function JobsPage() {
       })
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false))
-  }, [q, city, recruit, shown, activeId, sort, onlyNew, lastSeen])
+  }, [q, city, recruit, cohort, shown, activeId, sort, onlyNew, lastSeen])
 
   useEffect(() => {
     const t = setTimeout(load, 300) // 搜索防抖
@@ -170,6 +172,14 @@ export default function JobsPage() {
           <option value="campus">校招</option>
           <option value="social">社招</option>
           <option value="internship">实习</option>
+        </select>
+        <select value={cohort} onChange={(e) => { setCohort(e.target.value); setShown(PAGE) }} style={{ width: 110 }} aria-label="届别筛选">
+          <option value="">全部届别</option>
+          <option value="2024">2024 届</option>
+          <option value="2025">2025 届</option>
+          <option value="2026">2026 届</option>
+          <option value="2027">2027 届</option>
+          <option value="2028">2028 届</option>
         </select>
         <select
           value={sort}

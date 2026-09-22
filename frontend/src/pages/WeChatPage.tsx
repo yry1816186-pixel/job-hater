@@ -258,6 +258,12 @@ export default function WeChatPage() {
       {status?.error && (
         <div className="error-box" style={{ marginBottom: 16 }}>
           扫描失败：{status.error}
+          {status.error.includes('密钥') && (
+            <div style={{ marginTop: 6 }}>
+              密钥只在微信<b>刚启动/刚登录的瞬间</b>存在于内存。请<b>退出微信并重新打开
+              （自动登录即可，无需扫码）</b>，登录完成后<b>立即</b>点「开始扫描」。
+            </div>
+          )}
         </div>
       )}
 

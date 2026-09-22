@@ -603,6 +603,8 @@ def register_routes(app: FastAPI) -> None:
         status: str | None = None, near_dup_only: bool = False,
         sort: str = "recent", profile_id: str | None = None,
         since: str | None = None,
+        graduation_year: int | None = Query(None, ge=2000, le=2100),
+        source_id: str | None = None,
         limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0),
         con=Depends(get_con),
     ):
@@ -621,6 +623,8 @@ def register_routes(app: FastAPI) -> None:
             offset=offset,
             ranked_profile_id=profile_id if sort == "match" else None,
             since=since,
+            graduation_year=graduation_year,
+            source_id=source_id,
         )
         out = {
             "total": svc.count_filtered(
@@ -630,6 +634,8 @@ def register_routes(app: FastAPI) -> None:
                 statuses=[status] if status else None,
                 near_dup_only=near_dup_only,
                 since=since,
+                graduation_year=graduation_year,
+                source_id=source_id,
             ),
             "items": [j.model_dump() for j in jobs],
         }

@@ -168,7 +168,11 @@ class WeChatService:
             return
         if key is None:
             state.phase = "failed"
-            state.error = "未能在微信进程内存中找到数据库密钥。请确认微信已登录且正在运行后重试。"
+            state.error = (
+                "未能在微信进程内存中找到数据库密钥——密钥只在微信刚启动/刚登录的"
+                "瞬间驻留内存。请退出微信并重新打开（自动登录即可），登录完成后立即"
+                "重新扫描；仍失败可在重启后 1 分钟内多试几次。"
+            )
             state.finished_at = time.time()
             return
 

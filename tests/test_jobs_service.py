@@ -57,6 +57,27 @@ def test_ingest_normalization(svc):
     assert "示例智能科技" in row["raw_json"]
 
 
+def test_graduation_year_passthrough_and_filter(svc):
+    """届别透传进 extras（招聘雷达导入用），search/count_filtered 可按届别与来源过滤。"""
+    svc.ingest([RAW_A], source_id="wechat")
+    svc.ingest([{**RAW_C_OTHER, "graduation_year": 2027}], source_id="wechat")
+    svc.ingest([RAW_B_SAME_COMPANY_NEAR_TITLE], source_id="manual")
+
+    jobs = svc.search("", graduation_year=2027)
+    assert [j.title for j in jobs] == ["机械设计师"]
+    assert jobs[0].extras.get("graduation_year") == 2027
+    assert svc.count_filtered("", graduation_year=2027) == 1
+    # 无届别的岗位不参与届别过滤（而不是被误判成某届）
+    assert svc.count_filtered("", graduation_year=2026) == 0
+    # 来源过滤与届别正交组合
+    assert svc.count_filtered("", source_id="wechat") == 2
+    assert svc.count_filtered("", source_id="wechat", graduation_year=2027) == 1
+    assert svc.count_filtered("", source_id="manual") == 1
+    # 无效届别（0/非数字）不入 extras，不产生脏数据
+    svc.ingest([{**RAW_C_OTHER, "graduation_year": "n/a", "company": "另一家公司"}])
+    assert svc.count_filtered("", graduation_year=0) == svc.count_filtered("")
+
+
 def test_dedup_layers(svc):
     # L1：同源同 source_job_id
     s1 = svc.ingest([RAW_A_DUP_SOURCE_ID])

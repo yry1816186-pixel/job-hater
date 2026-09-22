@@ -263,6 +263,13 @@ class JobService:
         flags = _factual_flags(text)
         if flags:
             extras["flags"] = flags
+        # 届别（如 2027）是原样事实字段：无对应列，透传进 extras 供筛选/展示
+        try:
+            cohort = int(raw.get("graduation_year") or 0)
+        except (TypeError, ValueError):
+            cohort = 0
+        if cohort:
+            extras["graduation_year"] = cohort
 
         employer_name = company
         content_basis = tp.norm_key(company) + "|" + tp.norm_key(title) + "|" + tp.norm_key(
@@ -440,6 +447,8 @@ class JobService:
         statuses: list[str] | None,
         near_dup_only: bool,
         since: str | None = None,
+        graduation_year: int | None = None,
+        source_id: str | None = None,
     ) -> tuple[bool, list[str], list]:
         """构造 search 与 count_filtered 共用的 WHERE 片段。返回 (join_fts, where, args)。"""
         where: list[str] = []
@@ -466,6 +475,12 @@ class JobService:
             args.append(since[:10])
         if near_dup_only:
             where.append("p.extras_json LIKE '%\"near_dup_of\"%'")
+        if graduation_year:
+            where.append("json_extract(p.extras_json, '$.graduation_year') = ?")
+            args.append(graduation_year)
+        if source_id:
+            where.append("p.source_id = ?")
+            args.append(source_id)
         return join_fts, where, args
 
     def search(
@@ -480,15 +495,19 @@ class JobService:
         offset: int = 0,
         ranked_profile_id: str | None = None,
         since: str | None = None,
+        graduation_year: int | None = None,
+        source_id: str | None = None,
     ) -> list[JobPosting]:
         """检索：FTS（中文预分词）+ 结构化过滤。query 为空时按时间倒序列举。
         since（ISO 日期）：只看该日期之后首次入库的岗位（「新增 N 条」角标用）。
+        graduation_year/source_id：届别（extras 透传字段）与来源过滤。
 
         ranked_profile_id 非空时改按该画像最近一次匹配结果排序：
         合格优先 → rank_score → 检索相关性 → 入库时间。岗位未参与匹配
         （无匹配记录）排最后，不隐藏——排序是呈现顺序，不是过滤。"""
         join_fts, where, args = self._search_conditions(
-            query, cities, recruitment_types, statuses, near_dup_only, since
+            query, cities, recruitment_types, statuses, near_dup_only, since,
+            graduation_year, source_id,
         )
         join_match = ""
         order = " ORDER BY p.last_seen_at DESC"
@@ -526,10 +545,13 @@ class JobService:
         statuses: list[str] | None = None,
         near_dup_only: bool = False,
         since: str | None = None,
+        graduation_year: int | None = None,
+        source_id: str | None = None,
     ) -> int:
         """与 search() 同口径的过滤计数（分页总数不失真）。"""
         join_fts, where, args = self._search_conditions(
-            query, cities, recruitment_types, statuses, near_dup_only, since
+            query, cities, recruitment_types, statuses, near_dup_only, since,
+            graduation_year, source_id,
         )
         sql = (
             "SELECT COUNT(*) AS c FROM job_postings p"
