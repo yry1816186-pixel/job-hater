@@ -362,6 +362,42 @@ def test_ocr_ocr_text_into_recruit():
     assert hit is not None and hit.company == "顺丰" and hit.cohort == 2027
 
 
+# ==================== 公众号文章正文深挖 ====================
+
+
+def test_article_extract_and_collect():
+    """SSR 正文提取 + URL 收集（去重/置信排序/限量）。"""
+    from jobhater.services.wechat.article_fetch import collect_urls, extract_article
+
+    doc = (
+        "<html><title>字节跳动2027届校招</title><body>"
+        '<div id="js_content"><p>【招聘岗位】后端/前端/算法</p>'
+        "<p>工作地点：北京 上海</p><br>薪资 25-45k</div></body></html>"
+    )
+    t, body = extract_article(doc)
+    assert "字节跳动" in t and "后端/前端/算法" in body and "北京" in body
+
+    hits = [
+        {"apply_method": "链接 https://mp.weixin.qq.com/s/abc", "confidence": 0.9},
+        {"apply_method": "链接 https://mp.weixin.qq.com/s/abc", "confidence": 0.5},  # 重复 URL
+        {"apply_method": "链接 https://example.com/other", "confidence": 1.0},  # 非公众号
+        {"apply_method": "链接 https://mp.weixin.qq.com/s/xyz", "confidence": 0.4},
+    ]
+    urls = collect_urls(hits, limit=1)
+    assert urls == ["https://mp.weixin.qq.com/s/abc"], urls  # 高置信优先 + 限量
+    assert len(collect_urls(hits)) == 2
+
+
+def test_article_fetch_offline_no_urls(monkeypatch):
+    """空 URL 列表不发起网络请求（fetch_articles 短路）。"""
+    from jobhater.services.wechat import article_fetch as af
+
+    called = []
+    monkeypatch.setattr(af.requests, "get", lambda *a, **k: called.append(1))
+    assert af.fetch_articles([]) == {}
+    assert called == []
+
+
 # ==================== 服务层 analyze（burst 合并） ====================
 
 

@@ -25,6 +25,7 @@ from typing import Any
 from jobhater import config
 from jobhater.services.wechat import parser as wx_parser
 from jobhater.services.wechat import recruit as wx_recruit
+from jobhater.services.wechat.article_fetch import collect_urls, fetch_articles
 from jobhater.services.wechat.decrypt import decrypt_database, verify_key
 from jobhater.services.wechat.detect import detect as detect_env
 from jobhater.services.wechat.keyring_scan import find_key
@@ -239,6 +240,47 @@ class WeChatService:
                     })
         except Exception as e:  # noqa: BLE001  # 增强通道: 任何失败不阻断主结果
             state.progress_detail = {"ocr_error": str(e)[:200]}
+
+        # 5.6) 公众号文章正文深挖（卡片只带标题摘要，正文里是完整 JD；
+        #      限速并发抓取，失败/过期链接静默跳过）
+        try:
+            urls = collect_urls(hits)
+            if urls:
+                state.progress_detail = {"article_fetch": len(urls)}
+                arts = fetch_articles(urls, progress=lambda p: setattr(state, "progress_detail", {"article_fetching": p}))
+                best_by_url: dict[str, int] = {}
+                for i, h in enumerate(hits):
+                    am = h.get("apply_method") or ""
+                    if am.startswith("链接 "):
+                        u = am[3:].strip()
+                        if u not in best_by_url or hits[best_by_url[u]].get("confidence", 0) < h.get("confidence", 0):
+                            best_by_url[u] = i
+                for u, art in arts.items():
+                    ah = wx_recruit.analyze((art.title or "") + "\n" + art.text)
+                    if not ah or ah.confidence < 0.5:
+                        continue
+                    idx = best_by_url.get(u)
+                    if idx is not None and (ah.confidence > hits[idx].get("confidence", 0) or len(art.text) > len(hits[idx].get("source_text", "")) * 1.5):
+                        hits[idx]["source_text"] = art.text[:4000]
+                        hits[idx]["confidence"] = ah.confidence
+                        for k in ("company", "title", "cities", "salary", "education", "cohort", "kind", "deadline"):
+                            v = getattr(ah, k, None)
+                            if v and (not hits[idx].get(k) or k in ("cohort", "kind")):
+                                hits[idx][k] = v
+                        hits[idx]["evidence"] = ah.evidence + ["正文深挖（公众号文章全文）"]
+                    elif idx is None:
+                        hits.append({
+                            **ah.to_dict(),
+                            "talker": "article_fetch",
+                            "talker_name": "文章正文（公众号深挖）",
+                            "sender_name": "",
+                            "create_time": 0,
+                            "time_str": "",
+                            "source_text": art.text[:4000],
+                            "merged": False,
+                        })
+        except Exception as e:  # noqa: BLE001  # 增强通道: 任何失败不阻断主结果
+            state.progress_detail = {"article_error": str(e)[:200]}
         hits.sort(key=lambda h: (-h["confidence"], h.get("create_time") or 0))
         state.hits = len(hits)
 
