@@ -1,13 +1,17 @@
 """HTTP 路由：参数绑定 + 错误映射，业务规则全部在 services 层。"""
 from __future__ import annotations
 
+import logging
+import os
 import sqlite3
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from jobhater.db import connect
+from jobhater import config
+from jobhater.db import connect, migration_files
 from jobhater.services.ai import EGRESS_DISCLOSURES, AIService
 from jobhater.services.backup import BackupService
 from jobhater.services.contacts import ContactsService
@@ -23,6 +27,8 @@ from jobhater.services.profile import ProfileService
 from jobhater.services.reminders import RemindersService
 from jobhater.services.settings import SettingsService
 from jobhater.services.stats import StatsService
+
+logger = logging.getLogger("jobhater.health")
 
 
 def get_con():
@@ -385,7 +391,33 @@ def _csv_response(header: list[str], rows: list[dict], filename: str) -> Respons
 def register_routes(app: FastAPI) -> None:
     @app.get("/api/health")
     def health():
-        return {"ok": True, "version": app.version}
+        """深度探活（BC-008）：DB 连通+SELECT 1 / schema 版本一致 / data_dir 可写。
+
+        任一失败 → 503 + checks 明细（compose healthcheck 与前端错误横幅消费）；
+        锁竞争时快速失败（busy_timeout 收紧到 40ms，单次检查预算 < 50ms）。
+        """
+        checks: dict[str, str] = {"db": "fail", "schema": "fail", "data_dir": "fail"}
+        con = None
+        try:
+            con = connect()
+            con.execute("PRAGMA busy_timeout=40")
+            con.execute("SELECT 1").fetchone()
+            checks["db"] = "ok"
+            expected = {v for v, _, _ in migration_files()}
+            applied = {int(r["version"]) for r in con.execute("SELECT version FROM schema_migrations")}
+            checks["schema"] = "ok" if applied == expected else "fail"
+        except (sqlite3.Error, OSError) as e:
+            logger.warning("health.check_db_failed", extra={"error": str(e)})
+        finally:
+            if con is not None:
+                con.close()
+        try:
+            checks["data_dir"] = "ok" if os.access(config.data_dir(), os.W_OK) else "fail"
+        except OSError as e:
+            logger.warning("health.check_data_dir_failed", extra={"error": str(e)})
+        if any(v != "ok" for v in checks.values()):
+            return JSONResponse(status_code=503, content={"ok": False, "checks": checks})
+        return {"ok": True, "version": app.version, "checks": checks}
 
     # ---------- 画像 ----------
 
