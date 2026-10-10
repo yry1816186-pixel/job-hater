@@ -38,7 +38,7 @@ def test_health_db_failure_returns_503(client, monkeypatch):
     def _broken_connect(path=None):
         raise sqlite3.OperationalError("disk I/O error")
 
-    monkeypatch.setattr("jobhater.api.routes.connect", _broken_connect)
+    monkeypatch.setattr("jobhater.api.routes_core.connect", _broken_connect)
     r = client.get("/api/health")
     assert r.status_code == 503
     body = r.json()
@@ -64,7 +64,7 @@ def test_health_schema_drift_returns_503(client):
 
 
 def test_health_data_dir_not_writable_returns_503(client, monkeypatch):
-    monkeypatch.setattr("jobhater.api.routes.os.access", lambda p, mode: False)
+    monkeypatch.setattr("jobhater.api.routes_core.os.access", lambda p, mode: False)
     r = client.get("/api/health")
     assert r.status_code == 503
     body = r.json()

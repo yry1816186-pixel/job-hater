@@ -1,4 +1,4 @@
-"""FastAPI 应用工厂：路由见 routes.py（UI/CLI/MCP 共享同一服务层）。"""
+"""FastAPI 应用工厂：路由按资源分模块注册（UI/CLI/MCP 共享同一服务层）。"""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -20,9 +20,21 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="Job Hater", version="3.1.0", lifespan=lifespan)
     app.add_middleware(HostOriginMiddleware)  # BC-001/002：Host/Origin 安全校验最先装配
-    from jobhater.api.routes import register_routes  # 延迟导入避免环
+    from jobhater.api.routes_ai import register as register_ai  # 延迟导入避免环
+    from jobhater.api.routes_core import register as register_core
+    from jobhater.api.routes_jobs import register as register_jobs
+    from jobhater.api.routes_lifecycle import register as register_lifecycle
+    from jobhater.api.routes_profiles import register as register_profiles
+    from jobhater.api.routes_wechat import register as register_wechat
 
-    register_routes(app)
+    # BC-007：巨石 routes.py 按资源拆 6 模块，各模块 register(app) 顺序注册
+    # （端点 URL/方法/schema/错误语义纯搬移，OpenAPI 快照前后零差异）
+    register_core(app)
+    register_profiles(app)
+    register_jobs(app)
+    register_lifecycle(app)
+    register_ai(app)
+    register_wechat(app)
     _mount_spa(app)
     return app
 
