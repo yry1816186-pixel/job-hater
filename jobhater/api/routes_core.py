@@ -10,11 +10,11 @@ import logging
 import os
 import sqlite3
 
-from fastapi import Depends, FastAPI, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
 from jobhater import config
-from jobhater.api.deps import _err, get_con
+from jobhater.api.deps import _err, get_con, read_upload
 from jobhater.api.schemas import (
     AIReviewIn,
     InterviewSessionIn,
@@ -34,6 +34,9 @@ from jobhater.services.settings import SettingsService
 from jobhater.services.stats import StatsService
 
 logger = logging.getLogger("jobhater.health")
+
+# SEC-007：备份恢复上传上限（SQLite 快照实体上限；恶意/误操作大文件不得整读进内存）
+MAX_RESTORE_UPLOAD_BYTES = 200 * 1024 * 1024
 
 
 def _csv_response(header: list[str], rows: list[dict], filename: str) -> Response:
@@ -244,8 +247,9 @@ def register(app: FastAPI) -> None:
         )
 
     @app.post("/api/backup/restore")
-    async def backup_restore(file: UploadFile, con=Depends(get_con)):
-        data = await file.read()
+    async def backup_restore(request: Request, file: UploadFile, con=Depends(get_con)):
+        """恢复备份（SEC-007：200MB 上限，读取前 Content-Length 预检 413）。"""
+        data = await read_upload(request, file, MAX_RESTORE_UPLOAD_BYTES)
         try:
             return BackupService(con, config.db_path()).restore(data)
         except ValueError as e:

@@ -1,7 +1,15 @@
 // popup：连接本机 Job Hater → 抓取 JD 草稿（可编辑后入库）/ 表单填充（只填不提交）。
+// SEC-005：DOM 一律 createElement+textContent 组装——抓取页 URL/错误消息/表单
+// label 均为页面可控数据，HTML 模板插值存在注入面（MV3 CSP 缓解但不留面）。
 /* global chrome */
 
 const $ = (id) => document.getElementById(id)
+const el = (tag, className, text) => {
+  const node = document.createElement(tag)
+  if (className) node.className = className
+  if (text !== undefined) node.textContent = text
+  return node
+}
 let apiBase = "http://127.0.0.1:8787"
 let profiles = []
 let activeProfileId = null
@@ -45,7 +53,7 @@ async function setStatus(ok, text) {
 async function loadProfiles() {
   profiles = await api("/profiles")
   const sel = $("profileSel")
-  sel.innerHTML = ""
+  sel.replaceChildren()
   for (const p of profiles) {
     const o = document.createElement("option")
     o.value = p.id
@@ -84,26 +92,37 @@ $("profileSel").addEventListener("change", async () => {
 /* ---------- JD 抓取 → 草稿（可编辑）→ 入库 ---------- */
 
 $("capture").addEventListener("click", async () => {
-  $("draftArea").innerHTML = '<div class="muted">抓取中…</div>'
+  $("draftArea").replaceChildren(el("div", "muted", "抓取中…"))
   try {
     const jd = await inject("CAPTURE_JD")
-    $("draftArea").innerHTML = `
-      <div class="draft">
-        <input id="dTitle" placeholder="岗位标题" />
-        <input id="dCompany" placeholder="公司" />
-        <input id="dCity" placeholder="城市（可空）" />
-        <button id="dSave" class="primary">存入岗位库（先出草稿可再改）</button>
-        <div class="muted" id="dMeta" style="margin-top:4px">正文 ${jd.text.length} 字 · 来自 ${jd.url.slice(0, 60)}</div>
-        <div class="ok-box" id="dMsg"></div>
-      </div>`
-    $("dTitle").value = jd.title || ""
-    $("dCompany").value = jd.company || ""
-    $("dSave").addEventListener("click", async () => {
-      const title = $("dTitle").value.trim()
-      const company = $("dCompany").value.trim()
+    const draft = el("div", "draft")
+    const dTitle = el("input")
+    dTitle.id = "dTitle"
+    dTitle.placeholder = "岗位标题"
+    const dCompany = el("input")
+    dCompany.id = "dCompany"
+    dCompany.placeholder = "公司"
+    const dCity = el("input")
+    dCity.id = "dCity"
+    dCity.placeholder = "城市（可空）"
+    const dSave = el("button", "primary", "存入岗位库（先出草稿可再改）")
+    dSave.id = "dSave"
+    dSave.type = "button"
+    const dMeta = el("div", "muted", `正文 ${jd.text.length} 字 · 来自 ${jd.url.slice(0, 60)}`)
+    dMeta.id = "dMeta"
+    dMeta.style.marginTop = "4px"
+    const dMsg = el("div", "ok-box")
+    dMsg.id = "dMsg"
+    draft.append(dTitle, dCompany, dCity, dSave, dMeta, dMsg)
+    $("draftArea").replaceChildren(draft)
+    dTitle.value = jd.title || ""
+    dCompany.value = jd.company || ""
+    dSave.addEventListener("click", async () => {
+      const title = dTitle.value.trim()
+      const company = dCompany.value.trim()
       if (!title || !company) {
-        $("dMsg").className = "err-box"
-        $("dMsg").textContent = "入库需要标题和公司——补全后再存。"
+        dMsg.className = "err-box"
+        dMsg.textContent = "入库需要标题和公司——补全后再存。"
         return
       }
       try {
@@ -116,29 +135,29 @@ $("capture").addEventListener("click", async () => {
               {
                 title,
                 company,
-                city: $("dCity").value.trim() || undefined,
+                city: dCity.value.trim() || undefined,
                 description: jd.text,
                 url: jd.url,
               },
             ],
           }),
         })
-        $("dMsg").className = "ok-box"
-        $("dMsg").textContent = `已入库：新增 ${r.added} 条（去重 ${r.deduped_exact + r.deduped_near} 条）。去「岗位收件箱」查看与匹配。`
+        dMsg.className = "ok-box"
+        dMsg.textContent = `已入库：新增 ${r.added} 条（去重 ${r.deduped_exact + r.deduped_near} 条）。去「岗位收件箱」查看与匹配。`
       } catch (e) {
-        $("dMsg").className = "err-box"
-        $("dMsg").textContent = `入库失败：${e.message}`
+        dMsg.className = "err-box"
+        dMsg.textContent = `入库失败：${e.message}`
       }
     })
   } catch (e) {
-    $("draftArea").innerHTML = `<div class="err-box">抓取失败：${e.message}</div>`
+    $("draftArea").replaceChildren(el("div", "err-box", `抓取失败：${e.message}`))
   }
 })
 
 /* ---------- 表单填充（只填不提交） ---------- */
 
 $("fill").addEventListener("click", async () => {
-  $("fillReport").innerHTML = '<div class="muted">扫描表单中…</div>'
+  $("fillReport").replaceChildren(el("div", "muted", "扫描表单中…"))
   try {
     const pid = activeProfileId || profiles[0]?.id
     // GET /profiles/{id} 返回完整画像视图（profile + 各分节）
@@ -158,17 +177,27 @@ $("fill").addEventListener("click", async () => {
       summary: p.summary ?? "",
     }
     const report = await inject("FILL_FORM", { profile })
-    const li = (x) => `<li>${x.label || x.field || ""}${x.reason ? " · " + x.reason : ""}</li>`
-    $("fillReport").innerHTML = `
-      <div class="fill-report">
-        扫描 ${report.scanned} 个字段：填充 <b>${report.filled.length}</b> 个（橙框高亮，请逐一核对），
-        跳过 ${report.skipped.length} 个。
-        ${report.filled.length ? `<details><summary>已填充</summary><ul>${report.filled.map(li).join("")}</ul></details>` : ""}
-        ${report.skipped.length ? `<details><summary>跳过</summary><ul>${report.skipped.map(li).join("")}</ul></details>` : ""}
-        <p class="muted" style="margin-top:6px">提交前请人工核对全部字段——本扩展永不代你提交。</p>
-      </div>`
+    const fillLi = (x) => el("li", undefined, `${x.label || x.field || ""}${x.reason ? " · " + x.reason : ""}`)
+    const detailList = (summaryText, items) => {
+      const details = el("details")
+      details.append(el("summary", undefined, summaryText))
+      const ul = el("ul")
+      for (const item of items) ul.append(fillLi(item))
+      details.append(ul)
+      return details
+    }
+    const box = el("div", "fill-report")
+    box.append(`扫描 ${report.scanned} 个字段：填充 `)
+    box.append(el("b", undefined, String(report.filled.length)))
+    box.append(` 个（橙框高亮，请逐一核对），跳过 ${report.skipped.length} 个。`)
+    if (report.filled.length) box.append(detailList("已填充", report.filled))
+    if (report.skipped.length) box.append(detailList("跳过", report.skipped))
+    const hint = el("p", "muted", "提交前请人工核对全部字段——本扩展永不代你提交。")
+    hint.style.marginTop = "6px"
+    box.append(hint)
+    $("fillReport").replaceChildren(box)
   } catch (e) {
-    $("fillReport").innerHTML = `<div class="err-box">填充失败：${e.message}</div>`
+    $("fillReport").replaceChildren(el("div", "err-box", `填充失败：${e.message}`))
   }
 })
 

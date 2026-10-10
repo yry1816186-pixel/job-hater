@@ -29,8 +29,12 @@ def register(app: FastAPI) -> None:
 
     @app.post("/api/jobs/import")
     def import_jobs(body: JobsImportIn, con=Depends(get_con)):
-        stats = JobService(con).ingest(body.jobs, source_id=body.source_id)
-        return stats.model_dump()
+        try:
+            stats = JobService(con).ingest(body.jobs, source_id=body.source_id)
+            return stats.model_dump()
+        except Exception as e:
+            # SEC-004：未预期异常走 _err → 500 通用文案 + logging.exception 落 stderr
+            raise _err(e) from e
 
     @app.post("/api/import/paste")
     def import_paste(body: PasteIn, con=Depends(get_con)):

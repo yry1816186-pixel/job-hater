@@ -4,9 +4,9 @@
 """
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 
-from jobhater.api.deps import _err, get_con
+from jobhater.api.deps import _err, get_con, read_upload
 from jobhater.api.schemas import (
     AICompleteIn,
     AIProviderIn,
@@ -18,7 +18,7 @@ from jobhater.api.schemas import (
 )
 from jobhater.services.ai import EGRESS_DISCLOSURES, AIService, EgressNotAcknowledged
 from jobhater.services.lifecycle import FeedbackService
-from jobhater.services.resume_import import ResumeImportError, ResumeImportService
+from jobhater.services.resume_import import MAX_UPLOAD_BYTES, ResumeImportError, ResumeImportService
 
 
 def register(app: FastAPI) -> None:
@@ -87,10 +87,11 @@ def register(app: FastAPI) -> None:
     # ---------- 简历导入（冷启动主链） ----------
 
     @app.post("/api/onboarding/parse-resume")
-    async def parse_resume_file(file: UploadFile, con=Depends(get_con)):
+    async def parse_resume_file(request: Request, file: UploadFile, con=Depends(get_con)):
         """上传简历文件（pdf/docx/txt/md/json）→ 结构化草稿。不落库——
-        草稿必须经用户核对编辑，再走 POST /api/profiles + import/json-resume 落库。"""
-        data = await file.read()
+        草稿必须经用户核对编辑，再走 POST /api/profiles + import/json-resume 落库。
+        SEC-007：超 MAX_UPLOAD_BYTES（10MB）直接 413，不再先全量读入内存。"""
+        data = await read_upload(request, file, MAX_UPLOAD_BYTES)
         try:
             return ResumeImportService(con).parse_file(file.filename or "", data)
         except ResumeImportError as e:
