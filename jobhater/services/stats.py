@@ -11,10 +11,34 @@ from __future__ import annotations
 import datetime as dt
 import sqlite3
 
-_APPLIED_STATUSES = ("applied_confirmed", "assessment", "interviewing", "offer")
-_IN_PROGRESS_STATUSES = ("applied_confirmed", "assessment", "interviewing")
-_PRE_APPLY_STATUSES = (
-    "discovered", "saved", "shortlisted", "preparing", "materials_ready", "ready_to_apply",
+from jobhater.domain.enums import ApplicationStatus
+
+# 状态集合一律以 ApplicationStatus 枚举为唯一真相源生成（BC-004）——
+# 手写字符串字面量会随枚举漂移（Phase 1 诊断 LOG-001 的根因）
+_APPLIED_STATUSES = tuple(
+    s.value for s in (
+        ApplicationStatus.APPLIED_CONFIRMED, ApplicationStatus.ASSESSMENT,
+        ApplicationStatus.INTERVIEWING, ApplicationStatus.OFFER,
+    )
+)
+_IN_PROGRESS_STATUSES = tuple(
+    s.value for s in (
+        ApplicationStatus.APPLIED_CONFIRMED, ApplicationStatus.ASSESSMENT,
+        ApplicationStatus.INTERVIEWING,
+    )
+)
+_PRE_APPLY_STATUSES = tuple(
+    s.value for s in (
+        ApplicationStatus.DISCOVERED, ApplicationStatus.SAVED, ApplicationStatus.SHORTLISTED,
+        ApplicationStatus.PREPARING, ApplicationStatus.MATERIALS_READY,
+        ApplicationStatus.READY_TO_APPLY,
+    )
+)
+# 「已推进」= 投后链（assessment/interviewing/offer）+ 终局（rejected/withdrawn/closed）
+_PROGRESS_STATUSES = _APPLIED_STATUSES + tuple(
+    s.value for s in (
+        ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN, ApplicationStatus.CLOSED,
+    )
 )
 _WEEKS_DEFAULT = 12
 _CITY_TOP_N = 12
@@ -188,12 +212,13 @@ class StatsService:
 
     def top_employers(self, profile_id: str | None = None, limit: int = 10) -> list[dict]:
         cond, params = self._profile_cond(profile_id)
+        progressed_in = ",".join("?" * len(_PROGRESS_STATUSES))
         rows = self.con.execute(
             f"""SELECT p.employer_name AS employer, COUNT(*) AS n,
-                       SUM(CASE WHEN a.status IN ('applied','applied_confirmed','screening','interview','offer_stage','closed') THEN 1 ELSE 0 END) AS progressed
+                       SUM(CASE WHEN a.status IN ({progressed_in}) THEN 1 ELSE 0 END) AS progressed
                 FROM applications a JOIN job_postings p ON p.id=a.job_id {cond}
                 GROUP BY p.employer_name ORDER BY n DESC LIMIT ?""",
-            (*params, limit),
+            (*_PROGRESS_STATUSES, *params, limit),
         ).fetchall()
         return [dict(r) for r in rows]
 
