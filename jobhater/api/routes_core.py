@@ -86,7 +86,7 @@ def register(app: FastAPI) -> None:
 
     # ---------- 进程内自监控指标（BC-010） ----------
 
-    def _metrics() -> Response:
+    def metrics_exposition() -> Response:
         """Prometheus 文本暴露（version=0.0.4）：内存累计快照，不持久化不外发。
 
         经 BC-001/002 中间件同等防护（仅本机回环 Host 可读）；/metrics 为
@@ -94,8 +94,8 @@ def register(app: FastAPI) -> None:
         """
         return Response(content=prometheus_text(), media_type=METRICS_CONTENT_TYPE)
 
-    app.add_api_route("/metrics", _metrics, methods=["GET"])
-    app.add_api_route("/api/metrics", _metrics, methods=["GET"])
+    app.add_api_route("/metrics", metrics_exposition, methods=["GET"])
+    app.add_api_route("/api/metrics", metrics_exposition, methods=["GET"])
 
     # ---------- 用户设置（本地偏好 KV） ----------
 
