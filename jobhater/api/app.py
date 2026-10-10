@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 
 from jobhater.api.security import HostOriginMiddleware
 from jobhater.db import apply_all
+from jobhater.observability import ObservabilityMiddleware, setup_logging
 
 
 @asynccontextmanager
@@ -27,8 +28,13 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    setup_logging()  # BC-009：进程级 JSON 日志（stderr 单 sink，幂等）
     app = FastAPI(title="Job Hater", version="3.1.0", lifespan=lifespan)
-    app.add_middleware(HostOriginMiddleware)  # BC-001/002：Host/Origin 安全校验最先装配
+    # 中间件装配顺序（后 add 者为外层）：HostOrigin 保持最外层——request_id 在此
+    # 生成、未过安全校验的请求不进入观测层（防 path 标签基数被任意路径灌爆）；
+    # Observability 在内层记录 access 行与 http_requests_total/耗时直方图。
+    app.add_middleware(ObservabilityMiddleware)
+    app.add_middleware(HostOriginMiddleware)  # BC-001/002：Host/Origin 安全校验最外层
     from jobhater.api.routes_ai import register as register_ai  # 延迟导入避免环
     from jobhater.api.routes_core import register as register_core
     from jobhater.api.routes_jobs import register as register_jobs

@@ -27,6 +27,8 @@ from urllib.parse import urlsplit
 
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from jobhater.observability import bind_request_id, get_request_id, unbind_request_id
+
 logger = logging.getLogger("jobhater.security")
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -92,6 +94,25 @@ class HostOriginMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        # BC-009：request_id 在最外层（本中间件）生成——安全拒绝行、access 行、
+        # 业务行全部同 ID 串联；经 contextvar 向内传播，随 X-Request-ID 响应头外显。
+        token = bind_request_id()
+
+        async def send_with_request_id(message: Send) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                headers.append((b"x-request-id", get_request_id().encode("ascii")))
+                message["headers"] = headers
+            await send(message)
+
+        try:
+            await self._check_and_forward(scope, receive, send_with_request_id)
+        finally:
+            unbind_request_id(token)
+
+    async def _check_and_forward(
+        self, scope: Scope, receive: Receive, send: Send
+    ) -> None:
         headers = scope.get("headers") or []
         method = scope.get("method", "")
         path = scope.get("path", "")

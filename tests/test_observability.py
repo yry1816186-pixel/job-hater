@@ -17,6 +17,9 @@ import re
 
 import pytest
 from fastapi.testclient import TestClient
+
+from jobhater import config
+from jobhater.api import create_app
 from jobhater.observability import (
     JsonLogFormatter,
     UvicornAccessJsonFormatter,
@@ -25,9 +28,6 @@ from jobhater.observability import (
     setup_logging,
     uvicorn_json_log_config,
 )
-
-from jobhater import config
-from jobhater.api import create_app
 
 _REQUIRED_FIELDS = ("timestamp", "level", "event", "request_id")
 
@@ -124,11 +124,16 @@ def test_request_id_coherent_across_access_business_and_header(tmp_path, monkeyp
     assert rid != rid2, "两次请求的 request_id 必须不同"
 
     lines = [json.loads(line) for line in buf.getvalue().splitlines() if line.strip()]
-    access = [e for e in lines if e.get("event") == "http.access"]
-    business = [e for e in lines if e.get("event") == "business.line"]
-    assert access, "请求完成后应产出 http.access 行"
-    assert business, "请求内业务行应被捕获"
-    assert all(e["request_id"] == rid for e in access + business)
+    # 只审计本仓事件行（httpx 客户端自身的 INFO 行也会流入根 handler，无 request_id）
+    events = [e for e in lines if e.get("event") in ("http.access", "business.line")]
+    by_request: dict[str, list[dict]] = {}
+    for e in events:
+        by_request.setdefault(e["request_id"], []).append(e)
+    assert set(by_request) == {rid, rid2}, f"事件行必须按请求归组到两个 request_id: {set(by_request)}"
+    for _request_rid, group in by_request.items():
+        assert any(e["event"] == "http.access" for e in group), "请求完成后应产出 http.access 行"
+        assert any(e["event"] == "business.line" for e in group), "请求内业务行应被捕获"
+    access = [e for e in by_request[rid] if e["event"] == "http.access"]
     # access 行按 observability_contract 带齐 method/path/status_code/duration_ms
     for entry in access:
         for field in ("method", "path", "status_code", "duration_ms"):

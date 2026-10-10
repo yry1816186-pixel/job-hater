@@ -72,8 +72,13 @@ def main(argv: list[str] | None = None) -> int:
         import uvicorn
 
         from jobhater.api import create_app
+        from jobhater.observability import uvicorn_json_log_config
 
-        uvicorn.run(create_app(), host=args.host, port=args.port, log_level="info")
+        # BC-009：uvicorn access/error 日志并入同一 stderr JSON 流（默认 access 走 stdout 纯文本）
+        uvicorn.run(
+            create_app(), host=args.host, port=args.port,
+            log_level="info", log_config=uvicorn_json_log_config(),
+        )
         return 0
 
     if args.cmd == "backup":
