@@ -550,9 +550,12 @@ def _scan_env_with_plain_dbs(tmp_path: Path, monkeypatch, *, key: bytes | None):
     from jobhater.services.wechat.service import WeChatService
 
     config.set_data_dir(tmp_path)
+    # 目录分层对齐微信真实布局（db_storage/message|contact/...）——service 按
+    # 「解密键前缀」分拣消息库/联系人库，扁平摆放会双双漏拣
     src = tmp_path / "wx-src"
-    src.mkdir()
-    msg_db = src / "message_0.db"
+    (src / "message").mkdir(parents=True)
+    (src / "contact").mkdir()
+    msg_db = src / "message" / "message_0.db"
     _mk_msg_db(
         msg_db,
         "g@chatroom",
@@ -564,7 +567,7 @@ def _scan_env_with_plain_dbs(tmp_path: Path, monkeypatch, *, key: bytes | None):
         ],
         with_name2id={7: "wxid_hr"},
     )
-    contact_db = src / "contact.db"
+    contact_db = src / "contact" / "contact.db"
     _mk_contact_db(contact_db, [("g@chatroom", "", "求职群", "", 2), ("wxid_hr", "", "", "HR", 1)])
     account = WeChatAccount(
         key="wxid_test_acct", wxid="wxid_test", root=src,
@@ -609,9 +612,8 @@ def config_set_data_dir_none() -> None:
 def test_scan_failed_key_missing_cleans_decrypted_dir(tmp_path: Path, monkeypatch):
     """BC-003②：密钥缺失 failed 路径同样清理（含历史残留）。"""
     svc, _ = _scan_env_with_plain_dbs(tmp_path, monkeypatch, key=None)
-    leftover = svc.decrypted_dir() / "历史残留"
-    leftover.mkdir(parents=True)
-    leftover.write_text("stale plaintext", encoding="utf-8")
+    svc.decrypted_dir().mkdir(parents=True, exist_ok=True)
+    (svc.decrypted_dir() / "stale.db").write_text("stale plaintext", encoding="utf-8")
     try:
         svc._run_scan(0.35)
         assert svc.state.phase == "failed"

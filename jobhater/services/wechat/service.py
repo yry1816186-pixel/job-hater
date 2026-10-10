@@ -9,7 +9,9 @@
 
 隐私边界：
 - 密钥仅在内存中使用，绝不持久化；
-- 解密产物放在 jobhater 数据目录 ``wechat/`` 下，``purge()`` 一键清除；
+- 解密产物在扫描收尾（done/failed/异常兜底）自动删除（BC-003/SEC-003）——
+  结果已固化于 scan_result.json（只含命中字段+证据链），明文整库不驻留磁盘；
+  ``purge()`` 保留为用户显式兜底入口；
 - 分析只保留命中消息的必要字段（会话名/发送者/时间/正文），不做全量聊天导出。
 """
 from __future__ import annotations
@@ -17,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import shutil
 import threading
 import time
 from collections.abc import Iterator
@@ -107,12 +110,18 @@ class WeChatService:
 
     def purge(self) -> None:
         """清除全部解密产物与结果缓存（不动微信原始数据）。"""
-        import shutil
-
         self.stop_scan()
         wd = self.work_dir()
         if wd.exists():
             shutil.rmtree(wd)
+
+    def _cleanup_decrypted(self) -> None:
+        """收尾清理解密产物（BC-003/SEC-003）：明文整库不驻留磁盘。
+
+        ignore_errors——清理失败不阻断扫描状态回执（结果已固化 scan_result.json）；
+        亦覆盖上一轮异常中断残留的历史明文。
+        """
+        shutil.rmtree(self.decrypted_dir(), ignore_errors=True)
 
     # ---------- 扫描生命周期 ----------
 
@@ -152,6 +161,7 @@ class WeChatService:
             self.state.phase = "failed"
             self.state.error = f"{type(e).__name__}: {e}"
             self.state.finished_at = time.time()
+            self._cleanup_decrypted()  # BC-003: 异常兜底同样不留明文
 
     def _scan_impl(self, min_confidence: float) -> None:
         state = self.state
@@ -162,6 +172,7 @@ class WeChatService:
                 state.phase = "failed"
                 state.error = "；".join(env.blockers)
                 state.finished_at = time.time()
+                self._cleanup_decrypted()  # BC-003: failed 收尾不留历史残留
                 return
             account = max(env.accounts, key=lambda a: a.total_db_bytes)
             state.accounts = len(env.accounts)
@@ -188,6 +199,7 @@ class WeChatService:
             key = find_key(anchors, progress=lambda pr: _prog(pr.to_dict()), stop_check=lambda: self._stop_flag.is_set())
             if self._stop_flag.is_set():
                 state.phase = "idle"
+                self._cleanup_decrypted()  # BC-003: 中途停止不留半程明文
                 return
             if key is None:
                 state.phase = "failed"
@@ -197,6 +209,7 @@ class WeChatService:
                     "重新扫描；仍失败可在重启后 1 分钟内多试几次。"
                 )
                 state.finished_at = time.time()
+                self._cleanup_decrypted()  # BC-003: failed 收尾不留历史残留
                 return
 
         # 3) 解密（消息/联系人；同库共享密钥失败时单独重扫该库）
@@ -209,6 +222,7 @@ class WeChatService:
             for _kind, db in want:
                 if self._stop_flag.is_set():
                     state.phase = "idle"
+                    self._cleanup_decrypted()  # BC-003: 中途停止不留半程明文
                     return
                 p1 = db.read_bytes()[:4096]
                 k = next((c for c in keys if verify_key(c, p1)), None)
@@ -314,6 +328,9 @@ class WeChatService:
         tmp = self.result_path().with_suffix(".json.tmp")
         tmp.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(tmp, self.result_path())
+        # BC-003/SEC-003：结果原子落盘成功后立即清理解密产物——只含命中字段+
+        # 证据链的 scan_result.json 已是唯一业务所需，明文整库不得驻留磁盘。
+        self._cleanup_decrypted()
         state.phase = "done"
         state.message = f"扫描完成：{state.messages_analyzed} 条消息中识别出 {len(hits)} 条招聘信息"
         state.finished_at = time.time()
