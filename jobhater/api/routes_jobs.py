@@ -119,11 +119,9 @@ def register(app: FastAPI) -> None:
             raise HTTPException(404, "job 不存在")
         out = job.model_dump()
         if profile_id:
-            out["match"] = (
-                MatchService(con)
-                .latest_for_job(job_id, profile_id)
-                .model_dump() if MatchService(con).latest_for_job(job_id, profile_id) else None
-            )
+            # LOG-008：单次查询后复用结果（旧实现判空+取值双查各反序列化一次全列 JSON）
+            m = MatchService(con).latest_for_job(job_id, profile_id)
+            out["match"] = m.model_dump() if m else None
         return out
 
     @app.patch("/api/jobs/{job_id}/status")

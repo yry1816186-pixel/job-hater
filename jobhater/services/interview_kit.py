@@ -17,7 +17,7 @@ import sqlite3
 from jobhater.db.connection import transaction
 from jobhater.domain.models import InterviewReview, InterviewSession
 from jobhater.services.ai import AIService, EgressNotAcknowledged
-from jobhater.services.storage import insert_model, new_id, row_to_model
+from jobhater.services.storage import insert_model, new_id, now_iso, row_to_model
 
 _SESSION_JSON = {"transcript": ("transcript_json", [])}
 _REVIEW_JSON = {
@@ -57,10 +57,6 @@ class InterviewKitError(ValueError):
     """非法练习器操作（会话不存在、已结束、角色非法等）。"""
 
 
-def _now() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-
 class InterviewKitService:
     def __init__(self, con: sqlite3.Connection) -> None:
         self.con = con
@@ -87,7 +83,7 @@ class InterviewKitService:
             session = InterviewSession(
                 id=new_id("ivs"), interview_id=interview_id, mode=mode,
                 persona=persona, difficulty=difficulty,
-                started_at=_now(), transcript=[],
+                started_at=now_iso(), transcript=[],
             )
             insert_model(self.con, "interview_sessions", session, _SESSION_JSON)
         return session
@@ -127,7 +123,7 @@ class InterviewKitService:
             if row["ended_at"]:
                 raise InterviewKitError("会话已结束，不能继续追加")
             transcript = json.loads(row["transcript_json"] or "[]")
-            transcript.append({"role": role, "content": content, "at": _now()})
+            transcript.append({"role": role, "content": content, "at": now_iso()})
             self.con.execute(
                 "UPDATE interview_sessions SET transcript_json=? WHERE id=?",
                 (json.dumps(transcript, ensure_ascii=False), session_id),
@@ -138,7 +134,7 @@ class InterviewKitService:
         with transaction(self.con):
             cur = self.con.execute(
                 "UPDATE interview_sessions SET ended_at=? WHERE id=? AND ended_at IS NULL",
-                (_now(), session_id),
+                (now_iso(), session_id),
             )
             if cur.rowcount == 0:
                 raise InterviewKitError(f"会话不存在或已结束: {session_id}")

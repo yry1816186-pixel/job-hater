@@ -1,6 +1,7 @@
 """仓储序列化助手：模型字段 ↔ 表列的机械映射。"""
 from __future__ import annotations
 
+import datetime as dt
 import json
 import sqlite3
 import uuid
@@ -10,6 +11,15 @@ from pydantic import BaseModel
 
 # json_fields 形如 {模型字段: (表列名, 列为空时的默认值)}
 JsonFieldMap = dict[str, tuple[str, Any]]
+
+
+def now_iso() -> str:
+    """UTC ISO-8601（秒 + 毫秒 + Z）统一时间戳。
+
+    ARCH-004：各服务共用的时间口径收敛至此单一定义——此前 6 处复制体中
+    matching.py 的副本已漂移为缺秒格式（%H:%M:%f），复制即漂移的实证。
+    """
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def new_id(prefix: str) -> str:
@@ -71,3 +81,18 @@ def row_to_model(cls: type[BaseModel], row: sqlite3.Row, json_fields: JsonFieldM
             data[model_field] = loads(raw, default)
     allowed = set(cls.model_fields)
     return cls.model_validate({k: v for k, v in data.items() if k in allowed})
+
+
+def row_to_dict(row: sqlite3.Row, json_fields: JsonFieldMap) -> dict[str, Any]:
+    """行 → 契约 dict（保留 JOIN 附加列如 job_title）；json 列经映射表反序列化。
+
+    ARCH-003：返回 dict 而非模型的服务路径（lifecycle 列表/比较）与
+    row_to_model 消费同一 JsonFieldMap 契约——同一「json 列 ↔ 字段」映射
+    只此一种写法，新增列不漏改。
+    """
+    data: dict[str, Any] = dict(row)
+    for model_field, (column, default) in json_fields.items():
+        if column in data:
+            raw = data.pop(column)
+            data[model_field] = loads(raw, default)
+    return data

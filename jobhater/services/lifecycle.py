@@ -10,14 +10,21 @@
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
 import sqlite3
 
 from jobhater.db.connection import transaction
 from jobhater.domain.enums import APPLICATION_TRANSITIONS, ApplicationStatus
 from jobhater.domain.models import Interview, Offer
-from jobhater.services.storage import new_id, row_to_model
+from jobhater.services.storage import (
+    dumps,
+    insert_model,
+    loads,
+    new_id,
+    now_iso,
+    row_to_dict,
+    row_to_model,
+)
 
 _INTERVIEW_JSON = {"interviewer_names": ("interviewer_names_json", [])}
 _SESSION_JSON = {"transcript": ("transcript_json", [])}
@@ -31,19 +38,22 @@ _OFFER_JSON = {
     "benefits": ("benefits_json", []),
     "custom_dimensions": ("custom_dimensions_json", {}),
 }
-
-
-def _now() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+_APP_JSON = {"tags": ("tags_json", [])}
 
 
 def _app_dict(row: sqlite3.Row) -> dict:
-    """applications 行 → 契约 dict：tags_json 列解析为 tags 列表。"""
+    """applications 行 → 契约 dict（ARCH-003：tags_json 经 _APP_JSON 映射驱动）。
+
+    tags 是标注非事实：损坏不炸列表、如实置空——本列保留容错语义（§0004），
+    其余 json 列损坏经 storage.loads 如实上抛（数据完整性优先于可用性）。
+    """
     d = dict(row)
-    try:
-        d["tags"] = json.loads(d.pop("tags_json") or "[]")
-    except json.JSONDecodeError:
-        d["tags"] = []  # 标签是标注非事实：损坏不炸列表，如实置空
+    for field, (col, default) in _APP_JSON.items():
+        raw = d.pop(col, None)
+        try:
+            d[field] = loads(raw, default)
+        except ValueError:
+            d[field] = default
     return d
 
 
@@ -112,8 +122,8 @@ class ApplicationService:
         with transaction(self.con):
             self.con.execute(
                 "UPDATE applications SET tags_json=?, updated_at=? WHERE id=?",
-                (json.dumps([*current["tags"], tag], ensure_ascii=False),
-                 _now(), application_id),
+                (dumps([*current["tags"], tag]),
+                 now_iso(), application_id),
             )
             self._event(application_id, "tag_added", payload={"tag": tag})
         return self.get(application_id)
@@ -125,8 +135,8 @@ class ApplicationService:
         with transaction(self.con):
             self.con.execute(
                 "UPDATE applications SET tags_json=?, updated_at=? WHERE id=?",
-                (json.dumps([t for t in current["tags"] if t != tag], ensure_ascii=False),
-                 _now(), application_id),
+                (dumps([t for t in current["tags"] if t != tag]),
+                 now_iso(), application_id),
             )
             self._event(application_id, "tag_removed", payload={"tag": tag})
         return self.get(application_id)
@@ -148,7 +158,7 @@ class ApplicationService:
             raise LifecycleError(
                 f"非法状态转移 {cur_s.value} → {to_s.value}；允许的目标：{allowed}"
             )
-        now = _now()
+        now = now_iso()
         with transaction(self.con):
             self.con.execute(
                 """UPDATE applications SET status=?, status_updated_at=?, updated_at=?
@@ -170,7 +180,7 @@ class ApplicationService:
             # 从早期状态直接确认：允许，但要求当前状态能一步转移到 ready_to_apply 链上？
             # 产品语义：用户说"我投了"就是事实——放行并记录原始状态
             pass
-        now = _now()
+        now = now_iso()
         with transaction(self.con):
             self.con.execute(
                 "UPDATE applications SET status=?, applied_at=?, apply_channel=COALESCE(?, apply_channel), "
@@ -188,7 +198,7 @@ class ApplicationService:
         with transaction(self.con):
             cur = self.con.execute(
                 "UPDATE applications SET resume_version_id=?, updated_at=? WHERE id=?",
-                (resume_version_id, _now(), application_id),
+                (resume_version_id, now_iso(), application_id),
             )
             if cur.rowcount == 0:
                 raise LifecycleError(f"投递记录不存在: {application_id}")
@@ -356,19 +366,7 @@ class ApplicationService:
             custom_dimensions=custom_dimensions or {},
         )
         with transaction(self.con):
-            self.con.execute(
-                """INSERT INTO offers (id, application_id, base_salary_k, salary_months,
-                     bonus_text, equity_text, benefits_json, city, work_mode,
-                     probation_months, deadline, notes, custom_dimensions_json)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    offer.id, offer.application_id, offer.base_salary_k, offer.salary_months,
-                    offer.bonus_text, offer.equity_text,
-                    json.dumps(offer.benefits, ensure_ascii=False), offer.city, offer.work_mode,
-                    offer.probation_months, offer.deadline, offer.notes,
-                    json.dumps(offer.custom_dimensions, ensure_ascii=False),
-                ),
-            )
+            insert_model(self.con, "offers", offer, _OFFER_JSON)  # ARCH-003：映射契约写入
             self._event(application_id, "offer_received", payload={"offer_id": offer.id})
         return offer
 
@@ -384,11 +382,7 @@ class ApplicationService:
         ).fetchall()
         out: list[dict] = []
         for r in rows:
-            d = dict(r)
-            for field, (col, default) in _OFFER_JSON.items():
-                raw = d.pop(col)
-                d[field] = json.loads(raw) if raw is not None else default
-            out.append(d)
+            out.append(row_to_dict(r, _OFFER_JSON))  # ARCH-003：同一映射契约读回
         return out
 
     def set_offer_status(self, offer_id: str, status: str) -> None:
@@ -397,7 +391,7 @@ class ApplicationService:
             raise LifecycleError(f"非法 offer 状态：{status}（允许 {sorted(valid)}）")
         with transaction(self.con):
             cur = self.con.execute(
-                "UPDATE offers SET status=?, updated_at=? WHERE id=?", (status, _now(), offer_id)
+                "UPDATE offers SET status=?, updated_at=? WHERE id=?", (status, now_iso(), offer_id)
             )
             if cur.rowcount == 0:
                 raise LifecycleError(f"offer 不存在: {offer_id}")
@@ -416,9 +410,7 @@ class ApplicationService:
             ).fetchone()
             if not row:
                 raise LifecycleError(f"offer 不存在: {oid}")
-            d = dict(row)
-            d["benefits"] = json.loads(d.pop("benefits_json") or "[]")
-            d["custom_dimensions"] = json.loads(d.pop("custom_dimensions_json") or "{}")
+            d = row_to_dict(row, _OFFER_JSON)  # ARCH-003：同一映射契约读回
             d["annual_base_k"] = round(
                 d["base_salary_k"] * (d["salary_months"] or 12), 1
             )

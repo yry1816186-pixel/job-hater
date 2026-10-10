@@ -19,11 +19,14 @@ from jobhater.db.connection import transaction
 from jobhater.domain.enums import JobStatus, RecruitmentType, WorkMode
 from jobhater.domain.models import IngestStats, JobPosting, JobSource
 from jobhater.metrics import job_ingest_total
+from jobhater.services.matching import LATEST_MATCH_ORDER
 from jobhater.services.storage import (
     JsonFieldMap,
+    dumps,
     insert_model,
     loads,
     new_id,
+    now_iso,
     row_to_model,
 )
 
@@ -54,10 +57,6 @@ _OUTSOURCING_WORDS = ["外包", "驻场", "劳务派遣", "人力服务"]
 # 无 deadline 岗位的发布超龄过期窗口（天）。数据常量：校招周期通常 1-2 月，
 # 超过 60 天未更新的岗位信息大概率已过时；宁可早标过期（可手工恢复）不可误导。
 PUBLISHED_MAX_AGE_DAYS = 60
-
-
-def _now() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def _today() -> str:
@@ -102,7 +101,7 @@ class JobService:
         self, source_id: str, *, ok: bool, message: str | None = None
     ) -> None:
         """Adapter 调用后上报健康。单源失败只影响自身状态（故障隔离）。"""
-        now = _now()
+        now = now_iso()
         with transaction(self.con):
             if ok:
                 self.con.execute(
@@ -161,7 +160,7 @@ class JobService:
         """
         self.ensure_source(source_id, "manual_paste", source_id)
         stats = IngestStats()
-        now = _now()
+        now = now_iso()
         # ---- 预装载去重索引（各一次全量 SELECT） ----
         existing_by_key: dict[str, tuple[str, bool]] = {}
         src_pairs: set[tuple[str, str]] = set()
@@ -390,10 +389,10 @@ class JobService:
             job.experience_required_min, job.experience_required_text,
             job.education_required, job.salary_min_k, job.salary_max_k,
             job.salary_months, job.salary_text, job.description, job.responsibilities,
-            json.dumps(job.keywords, ensure_ascii=False),
+            dumps(job.keywords),
             job.published_at, job.deadline, job.fetched_at, job.status.value,
             job.source_confidence, job.content_hash, job.dedupe_key, search_text,
-            json.dumps(job.extras, ensure_ascii=False), job.employer_name,
+            dumps(job.extras), job.employer_name,
         )
         assert len(cols) == len(vals), f"列/值不匹配: {len(cols)} vs {len(vals)}"
         self.con.execute(
@@ -517,11 +516,13 @@ class JobService:
         join_match = ""
         order = " ORDER BY p.last_seen_at DESC"
         if ranked_profile_id:
-            # 每岗取该画像最近一次匹配（match_results 追加写，MAX(id) 即最新）
+            # 每岗取该画像最近一次匹配——与 MatchService.latest_for_job 同一判定口径
+            # （ARCH-004：LATEST_MATCH_ORDER 单一定义，两处消费不漂移）
             join_match = (
                 " LEFT JOIN match_results m ON m.job_id = p.id AND m.profile_id = ?"
-                " AND m.id = (SELECT MAX(m2.id) FROM match_results m2"
-                "             WHERE m2.job_id = p.id AND m2.profile_id = ?)"
+                " AND m.id = (SELECT m2.id FROM match_results m2"
+                "             WHERE m2.job_id = p.id AND m2.profile_id = ?"
+                f"             ORDER BY m2.{LATEST_MATCH_ORDER} LIMIT 1)"
             )
             args = [ranked_profile_id, ranked_profile_id, *args]
             order = (

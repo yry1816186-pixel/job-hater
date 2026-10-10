@@ -21,17 +21,13 @@ from pathlib import Path
 
 from jobhater import config
 from jobhater.db.connection import transaction
-from jobhater.services.storage import new_id
+from jobhater.services.storage import new_id, now_iso
 
 # ---- factcheck 规则常量（与 v1 对齐，泛化到任意用户） ----
 CITE_RE = re.compile(r"\[ev:([A-Za-z0-9_\-]+)\]")
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 STRONG_CLAIM_WORDS = ["独立完成", "独立作者", "主导", "首创", "从零搭建", "从0到1", "独立开发", "唯一负责人"]
 COMMERCIAL_RISK_WORDS = ["商业", "营收", "收入", "签约", "甲方", "客户", "盈利", "百万", "千万", "亿", "中标", "成交"]
-
-
-def _now() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 class ResumeError(ValueError):
@@ -147,7 +143,7 @@ class ResumeService:
             )
             self.con.execute(
                 "UPDATE resumes SET current_version=?, updated_at=? WHERE id=?",
-                (version, _now(), resume_id),
+                (version, now_iso(), resume_id),
             )
         return vid
 
@@ -236,7 +232,7 @@ class ResumeService:
                     issues.append({"path": path, "type": "commercial_risk",
                                    "msg": f"高风险表述「{w}」未在证据原文中出现（学生材料需终审）"})
         report = {"passed": not issues, "bullets_checked": len(bullets),
-                  "issues": issues, "checked_at": _now()}
+                  "issues": issues, "checked_at": now_iso()}
         with transaction(self.con):
             self.con.execute(
                 "UPDATE resume_versions SET factcheck_report_json=? WHERE id=?",
@@ -259,7 +255,7 @@ class ResumeService:
             self.con.execute(
                 "UPDATE resumes SET status='final', updated_at=? WHERE id="
                 "(SELECT resume_id FROM resume_versions WHERE id=?)",
-                (_now(), version_id),
+                (now_iso(), version_id),
             )
         return {"ok": True}
 

@@ -1,7 +1,9 @@
 """wenke 官方招聘接口适配器。
 
-抓取器移植自 wenke-radar（MIT，https://github.com/.../wenke-radar，
-见 docs/THIRD_PARTY_NOTICES.md），改写为本产品 SourceAdapter 契约：
+抓取器移植自 wenke-radar：
+Copyright (c) wenke-radar authors（MIT License，原文见
+https://github.com/andylove-me/wenke-radar 与 docs/THIRD_PARTY_NOTICES.md），
+改写为本产品 SourceAdapter 契约：
 - 产出 raw dict（本系统统一 ingest 契约），不再使用其私有 JobItem；
 - 逐公司故障隔离：单公司失败只记健康状态，不拖垮整批；
 - 限速：官方接口礼貌抓取（每源分页间隔），每日一跑的建议写入 rate_policy。

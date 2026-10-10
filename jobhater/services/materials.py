@@ -13,7 +13,6 @@ v1→v2 重建补齐的「无 AI 材料层」：
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
 import re
 import sqlite3
@@ -38,7 +37,7 @@ from jobhater.services.resume import (
     STRONG_CLAIM_WORDS,
     ResumeService,
 )
-from jobhater.services.storage import JsonFieldMap, new_id, row_to_model
+from jobhater.services.storage import JsonFieldMap, new_id, now_iso, row_to_model
 
 _CL_JSON: JsonFieldMap = {"factcheck_report": ("factcheck_report_json", None)}
 
@@ -69,10 +68,6 @@ GREETING_MAX_CHARS = 150  # 打招呼话术的组装预算（含开头结尾，�
 
 class MaterialsError(ValueError):
     """材料生成失败（画像/岗位不存在或数据不足）。信息面向用户，可直接展示。"""
-
-
-def _now() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def _clip(s: str | None, limit: int) -> str:
@@ -482,7 +477,7 @@ class MaterialsService:
                     issues.append({**loc, "type": "unverified_claim",
                                    "msg": f"表述「{w}」未在证据原文中出现"})
         return {"passed": not issues, "lines_checked": len(claim_lines),
-                "issues": issues, "checked_at": _now()}
+                "issues": issues, "checked_at": now_iso()}
 
     # ---------- 3. 打招呼话术 ----------
 

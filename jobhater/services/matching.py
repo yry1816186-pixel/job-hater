@@ -24,6 +24,11 @@ from jobhater.services.profile import degree_rank
 
 ENGINE_VERSION = "2.3.0"  # 2.2.1 修复批量相关性 BM25 恒空；2.3.0 相关性融合进 skill_match（0.6/0.4 校准）
 
+# ARCH-004/LOG-008：「最近一次匹配」的唯一判定口径——computed_at 打平（同毫秒
+# 追加写）时以 id 决胜。latest_for_job 与 jobs 检索排序子查询共同消费，
+# 单一定义杜绝双实现口径漂移（旧 MAX(id) 与 computed_at DESC 时钟回拨下会选不同行）。
+LATEST_MATCH_ORDER = "computed_at DESC, id DESC"
+
 # 维度默认权重与结论阈值——"数据层默认"而非代码铁律：用户在 preset.weights 可全量覆盖。
 DEFAULT_WEIGHTS: dict[str, float] = {
     "skill_match": 0.30,
@@ -97,10 +102,6 @@ FEEDBACK_WEIGHTS: dict[str, float] = {
 }
 
 _GRAD_YEAR_RE_STR = r"(20\d{2})\s*届"
-
-
-def _now() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%f.%f")[:-3] + "Z"
 
 
 def _job_text(job: JobPosting) -> str:
@@ -671,8 +672,8 @@ class MatchService:
 
     def latest_for_job(self, job_id: str, profile_id: str) -> MatchOutcome | None:
         row = self.con.execute(
-            """SELECT * FROM match_results WHERE job_id=? AND profile_id=?
-                 AND engine_version=? ORDER BY computed_at DESC LIMIT 1""",
+            f"""SELECT * FROM match_results WHERE job_id=? AND profile_id=?
+                 AND engine_version=? ORDER BY {LATEST_MATCH_ORDER} LIMIT 1""",
             (job_id, profile_id, ENGINE_VERSION),
         ).fetchone()
         if not row:

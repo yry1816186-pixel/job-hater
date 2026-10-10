@@ -17,6 +17,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+import httpx
+
 from jobhater.db.connection import transaction
 from jobhater.metrics import ai_provider_requests_total
 from jobhater.services.storage import new_id
@@ -72,6 +74,14 @@ class AIProvider(Protocol):
     def complete(self, req: TaskRequest) -> Any: ...
 
 
+def _retryable(e: Exception) -> bool:
+    """LOG-004：仅 5xx/429 值得重试——4xx（鉴权/参数/配额拒绝）与响应形状错误
+    （KeyError/ValueError/AIError）重放只会空耗配额并延迟失败反馈。"""
+    return isinstance(e, httpx.HTTPStatusError) and (
+        e.response.status_code == 429 or e.response.status_code >= 500
+    )
+
+
 class NoneProvider:
     """本地模式的显式空实现：能力清单如实为空，调用即抛 AINotConfigured。"""
 
@@ -97,8 +107,6 @@ class OpenAICompatProvider:
         self, *, base_url: str, model: str, api_key: str | None,
         timeout_s: int = 60, max_retries: int = 1, display_name: str = "",
     ) -> None:
-        import httpx
-
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
@@ -139,6 +147,8 @@ class OpenAICompatProvider:
                 return content
             except Exception as e:  # httpx.HTTPError / KeyError / ValueError
                 last_err = e
+                if not _retryable(e):
+                    break  # LOG-004：4xx/形状错误不可重试，立即放弃
         raise AIError(f"AI 调用失败（{self.display_name or self.model}）：{last_err}") from last_err
 
 
@@ -149,8 +159,6 @@ class AnthropicProvider:
         self, *, base_url: str = "https://api.anthropic.com/v1", model: str,
         api_key: str, timeout_s: int = 60, max_retries: int = 1, display_name: str = "",
     ) -> None:
-        import httpx
-
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
@@ -191,6 +199,8 @@ class AnthropicProvider:
                 return content
             except Exception as e:
                 last_err = e
+                if not _retryable(e):
+                    break  # LOG-004：4xx/形状错误不可重试，立即放弃
         raise AIError(f"AI 调用失败（{self.display_name or self.model}）：{last_err}") from last_err
 
 

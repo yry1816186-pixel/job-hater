@@ -105,7 +105,7 @@ APPLICATION_TRANSITIONS: dict[ApplicationStatus, set[ApplicationStatus]] = {
         ApplicationStatus.SAVED, ApplicationStatus.SHORTLISTED,
         ApplicationStatus.PREPARING, ApplicationStatus.MATERIALS_READY,
         ApplicationStatus.READY_TO_APPLY,
-        ApplicationStatus.REJECTED, ApplicationStatus.CLOSED,
+        ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN, ApplicationStatus.CLOSED,
     },
     ApplicationStatus.SAVED: {
         ApplicationStatus.SHORTLISTED, ApplicationStatus.PREPARING,
