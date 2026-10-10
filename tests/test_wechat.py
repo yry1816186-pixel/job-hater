@@ -393,9 +393,80 @@ def test_article_fetch_offline_no_urls(monkeypatch):
     from jobhater.services.wechat import article_fetch as af
 
     called = []
-    monkeypatch.setattr(af, "_requests", lambda: (_ for _ in ()).throw(AssertionError("不应发起请求")))
+    monkeypatch.setattr(af, "_shared_client", lambda: (_ for _ in ()).throw(AssertionError("不应发起请求")))
     assert af.fetch_articles([]) == {}
     assert called == []
+
+
+# ==================== BC-005/SEC-006: httpx 迁移 + 公众号 URL 白名单 ====================
+
+
+def test_fetch_one_uses_shared_httpx_client(monkeypatch):
+    """BC-005①：抓取走共享 httpx.Client（核心依赖），目标 URL 与 UA 头透传。"""
+    import httpx
+
+    from jobhater.services.wechat import article_fetch as af
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["ua"] = request.headers.get("user-agent")
+        return httpx.Response(
+            200,
+            text=(
+                "<html><title>字节跳动2027届校招</title><body>"
+                '<div id="js_content"><p>' + "后端/前端/算法岗位明细，" * 20 + "</p></body></html>"
+            ),
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), timeout=10.0, follow_redirects=True)
+    monkeypatch.setattr(af, "_shared_client", lambda: client)
+    art = af._fetch_one("https://mp.weixin.qq.com/s/abc")
+    assert art is not None and "字节" in art.title and len(art.text) > 60
+    assert seen["url"] == "https://mp.weixin.qq.com/s/abc"
+    assert seen["ua"] == af.UA
+
+
+def test_fetch_one_failure_is_observable_structured_log(monkeypatch, caplog):
+    """BC-005②：降级原因经结构化日志可观测（article_fetch_unavailable + reason）。"""
+    import httpx
+
+    from jobhater.services.wechat import article_fetch as af
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("合成连接失败", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(af, "_shared_client", lambda: client)
+    with caplog.at_level("WARNING", logger="jobhater.wechat.article_fetch"):
+        assert af._fetch_one("https://mp.weixin.qq.com/s/abc") is None
+    recs = [r for r in caplog.records if r.getMessage() == "article_fetch_unavailable"]
+    assert recs and recs[0].reason == "ConnectError" and recs[0].url == "https://mp.weixin.qq.com/s/abc"
+
+
+def test_article_fetch_module_has_no_requests_dependency():
+    """BC-005③：模块源码不再依赖未声明的 requests（标准安装必 ImportError 的根因）。"""
+    import inspect
+
+    from jobhater.services.wechat import article_fetch as af
+
+    assert "import requests" not in inspect.getsource(af)
+
+
+def test_collect_urls_whitelist_blocks_bypass_attempts():
+    """SEC-006：白名单按 urlsplit 解析（hostname 全等 + https），子串/降级/前缀伪造全拒。"""
+    from jobhater.services.wechat.article_fetch import collect_urls
+
+    hits = [
+        {"apply_method": "链接 https://attacker.com/x?mp.weixin.qq.com/s", "confidence": 0.99},
+        {"apply_method": "链接 http://mp.weixin.qq.com/s/plain", "confidence": 0.99},
+        {"apply_method": "链接 https://mp.weixin.qq.com.evil.com/s", "confidence": 0.99},
+        {"apply_method": "链接 https://MP.WEIXIN.QQ.COM/s/CASE", "confidence": 0.9},  # 主机名大小写不敏感
+        {"apply_method": "链接 https://mp.weixin.qq.com/s/ok", "confidence": 0.5},
+    ]
+    urls = collect_urls(hits)
+    assert urls == ["https://MP.WEIXIN.QQ.COM/s/CASE", "https://mp.weixin.qq.com/s/ok"]
 
 
 # ==================== 服务层 analyze（burst 合并） ====================
