@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
+from jobhater.api.security import HostOriginMiddleware
 from jobhater.db import apply_all
 
 
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Job Hater", version="3.1.0", lifespan=lifespan)
+    app.add_middleware(HostOriginMiddleware)  # BC-001/002：Host/Origin 安全校验最先装配
     from jobhater.api.routes import register_routes  # 延迟导入避免环
 
     register_routes(app)
