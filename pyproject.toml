@@ -35,6 +35,10 @@ dependencies = [
     # 简历导入冷启动链：读取用户上传的 PDF（文本层）/DOCX 简历
     "pypdf>=4.0",
     "python-docx>=1.1",
+    # 结构化 JSON 日志（BC-009）：stdlib logging 的社区标准 JSON formatter，仅写 stderr
+    "python-json-logger>=3.1",
+    # 进程内自监控指标（BC-010）：内存累计不外发，/metrics 仅本机回环可读
+    "prometheus-client>=0.20",
 ]
 
 [project.optional-dependencies]

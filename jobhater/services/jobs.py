@@ -18,6 +18,7 @@ from jobhater import textproc as tp
 from jobhater.db.connection import transaction
 from jobhater.domain.enums import JobStatus, RecruitmentType, WorkMode
 from jobhater.domain.models import IngestStats, JobPosting, JobSource
+from jobhater.metrics import job_ingest_total
 from jobhater.services.storage import (
     JsonFieldMap,
     insert_model,
@@ -218,6 +219,10 @@ class JobService:
                     stats.deduped_near += 1
                 elif outcome.startswith("去重"):
                     stats.deduped_exact += 1
+        # BC-010：入库计数（事务提交后落账）——只计真实新增（added），
+        # 去重/拒绝的岗位没有进入库存，不重复计账。
+        if stats.added:
+            job_ingest_total.labels(source=source_id).inc(stats.added)
         return stats
 
     def normalize(

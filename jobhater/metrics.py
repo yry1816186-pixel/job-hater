@@ -21,16 +21,18 @@ from __future__ import annotations
 from typing import Any
 
 from prometheus_client import (
-    CONTENT_TYPE_LATEST,
     CollectorRegistry,
     Counter,
     Histogram,
     generate_latest,
 )
+from prometheus_client.exposition import CONTENT_TYPE_PLAIN_0_0_4
 
 REGISTRY = CollectorRegistry()
 
-METRICS_CONTENT_TYPE = CONTENT_TYPE_LATEST  # "text/plain; version=0.0.4; charset=utf-8"
+# 规格 observability_contract 锁定经典 0.0.4 文本格式（prometheus-client ≥0.26 的
+# CONTENT_TYPE_LATEST 已指向新版 1.0.0 格式，显式取 0.0.4 常量保持兼容面稳定）
+METRICS_CONTENT_TYPE = CONTENT_TYPE_PLAIN_0_0_4
 
 http_requests_total = Counter(
     "http_requests_total",

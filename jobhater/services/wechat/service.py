@@ -14,15 +14,18 @@
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import threading
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from jobhater import config
+from jobhater.metrics import wechat_scan_duration_seconds
 from jobhater.services.wechat import parser as wx_parser
 from jobhater.services.wechat import recruit as wx_recruit
 from jobhater.services.wechat.article_fetch import collect_urls, fetch_articles
@@ -34,6 +37,19 @@ from jobhater.services.wechat.ocr import run_ocr
 # 同发送者在同一会话内的消息合并窗口（秒）：拆成多条发的 JD 能拼回整体
 BURST_WINDOW_S = 180
 MIN_CONFIDENCE = 0.35
+
+
+@contextlib.contextmanager
+def scan_phase(phase: str) -> Iterator[None]:
+    """扫描阶段计时（BC-010 wechat_scan_duration_seconds{phase}）。
+
+    finally 语义：阶段中途失败/停止时部分耗时同样落账（降级原因可观测）。
+    """
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        wechat_scan_duration_seconds.labels(phase=phase).observe(time.perf_counter() - start)
 
 
 @dataclass
@@ -140,148 +156,153 @@ class WeChatService:
     def _scan_impl(self, min_confidence: float) -> None:
         state = self.state
         # 1) 环境检测
-        env = detect_env()
-        if env.blockers:
-            state.phase = "failed"
-            state.error = "；".join(env.blockers)
-            state.finished_at = time.time()
-            return
-        account = max(env.accounts, key=lambda a: a.total_db_bytes)
-        state.accounts = len(env.accounts)
-        state.message = f"账号 {account.wxid}，消息库 {len(account.message_dbs)} 个"
+        with scan_phase("detecting"):
+            env = detect_env()
+            if env.blockers:
+                state.phase = "failed"
+                state.error = "；".join(env.blockers)
+                state.finished_at = time.time()
+                return
+            account = max(env.accounts, key=lambda a: a.total_db_bytes)
+            state.accounts = len(env.accounts)
+            state.message = f"账号 {account.wxid}，消息库 {len(account.message_dbs)} 个"
 
         # 2) 密钥提取（全部消息+联系人+公众号库的第一页做锚点：每库密钥独立缓存，多锚提高命中面）
         state.phase = "extracting_key"
-        want = (
-            [("message", p) for p in account.message_dbs]
-            + [("biz", p) for p in account.biz_dbs]
-            + [("contact", p) for p in account.contact_dbs]
-        )
-        anchors = []
-        for _kind, db in want:
-            try:
-                anchors.append(db.read_bytes()[:4096])
-            except OSError:
-                continue
-
-        def _prog(p: dict) -> None:
-            state.progress_detail = dict(p)
-
-        key = find_key(anchors, progress=lambda pr: _prog(pr.to_dict()), stop_check=lambda: self._stop_flag.is_set())
-        if self._stop_flag.is_set():
-            state.phase = "idle"
-            return
-        if key is None:
-            state.phase = "failed"
-            state.error = (
-                "未能在微信进程内存中找到数据库密钥——密钥只在微信刚启动/刚登录的"
-                "瞬间驻留内存。请退出微信并重新打开（自动登录即可），登录完成后立即"
-                "重新扫描；仍失败可在重启后 1 分钟内多试几次。"
+        with scan_phase("extracting_key"):
+            want = (
+                [("message", p) for p in account.message_dbs]
+                + [("biz", p) for p in account.biz_dbs]
+                + [("contact", p) for p in account.contact_dbs]
             )
-            state.finished_at = time.time()
-            return
+            anchors = []
+            for _kind, db in want:
+                try:
+                    anchors.append(db.read_bytes()[:4096])
+                except OSError:
+                    continue
 
-        # 3) 解密（消息/联系人；同库共享密钥失败时单独重扫该库）
-        state.phase = "decrypting"
-        out_root = self.decrypted_dir() / account.key
-        out_root.mkdir(parents=True, exist_ok=True)
-        keys: dict[bytes, None] = {key: None}  # 已知密钥集合(按 salt 试全部)
-        decrypted: dict[str, Path] = {}
-        for _kind, db in want:
+            def _prog(p: dict) -> None:
+                state.progress_detail = dict(p)
+
+            key = find_key(anchors, progress=lambda pr: _prog(pr.to_dict()), stop_check=lambda: self._stop_flag.is_set())
             if self._stop_flag.is_set():
                 state.phase = "idle"
                 return
-            p1 = db.read_bytes()[:4096]
-            k = next((c for c in keys if verify_key(c, p1)), None)
-            if k is None:
-                k = find_key(p1, stop_check=lambda: self._stop_flag.is_set())
-                if k is not None:
-                    keys[k] = None
-            if k is None:
-                continue
-            out = out_root / db.parent.name / db.name
-            r = decrypt_database(db, out, k)
-            if r.ok:
-                decrypted[f"{db.parent.name}/{db.name}"] = out
-                state.dbs_decrypted += 1
-        contact_dbs = [p for name, p in decrypted.items() if name.startswith("contact")]
-        message_dbs = [p for name, p in decrypted.items() if name.startswith("message")]
+            if key is None:
+                state.phase = "failed"
+                state.error = (
+                    "未能在微信进程内存中找到数据库密钥——密钥只在微信刚启动/刚登录的"
+                    "瞬间驻留内存。请退出微信并重新打开（自动登录即可），登录完成后立即"
+                    "重新扫描；仍失败可在重启后 1 分钟内多试几次。"
+                )
+                state.finished_at = time.time()
+                return
+
+        # 3) 解密（消息/联系人；同库共享密钥失败时单独重扫该库）
+        state.phase = "decrypting"
+        with scan_phase("decrypting"):
+            out_root = self.decrypted_dir() / account.key
+            out_root.mkdir(parents=True, exist_ok=True)
+            keys: dict[bytes, None] = {key: None}  # 已知密钥集合(按 salt 试全部)
+            decrypted: dict[str, Path] = {}
+            for _kind, db in want:
+                if self._stop_flag.is_set():
+                    state.phase = "idle"
+                    return
+                p1 = db.read_bytes()[:4096]
+                k = next((c for c in keys if verify_key(c, p1)), None)
+                if k is None:
+                    k = find_key(p1, stop_check=lambda: self._stop_flag.is_set())
+                    if k is not None:
+                        keys[k] = None
+                if k is None:
+                    continue
+                out = out_root / db.parent.name / db.name
+                r = decrypt_database(db, out, k)
+                if r.ok:
+                    decrypted[f"{db.parent.name}/{db.name}"] = out
+                    state.dbs_decrypted += 1
+            contact_dbs = [p for name, p in decrypted.items() if name.startswith("contact")]
+            message_dbs = [p for name, p in decrypted.items() if name.startswith("message")]
 
         # 4) 联系人 + 消息
         state.phase = "parsing"
-        contacts: dict[str, dict] = {}
-        for cdb in contact_dbs:
-            try:
-                contacts.update(wx_parser.load_contacts(cdb))
-            except Exception:  # noqa: BLE001  # 单个库损坏不阻断整体
-                continue
-        state.progress_detail = {"contacts": len(contacts)}
+        with scan_phase("parsing"):
+            contacts: dict[str, dict] = {}
+            for cdb in contact_dbs:
+                try:
+                    contacts.update(wx_parser.load_contacts(cdb))
+                except Exception:  # noqa: BLE001  # 单个库损坏不阻断整体
+                    continue
+            state.progress_detail = {"contacts": len(contacts)}
 
-        # 5) 招聘识别（含 burst 合并）
+        # 5) 招聘识别（含 burst 合并 + 图片 OCR + 公众号正文深挖两路增强）
         state.phase = "analyzing"
-        hits = self._analyze(message_dbs, contacts, account.wxid, min_confidence, state)
+        with scan_phase("analyzing"):
+            hits = self._analyze(message_dbs, contacts, account.wxid, min_confidence, state)
 
-        # 5.5) 图片 OCR 增强通道（Windows cache 明文图：海报/截图里的招聘信息；
-        #      .dat 专有容器暂无公开解法，此通道覆盖近期看过的图；失败降级不阻断）
-        try:
-            for oh in run_ocr(account.root / "cache"):
-                hit = wx_recruit.analyze(oh.text)
-                if hit and hit.confidence >= min_confidence:
-                    hits.append({
-                        **hit.to_dict(),
-                        "talker": "image_ocr",
-                        "talker_name": "图片识别（海报/截图）",
-                        "sender_name": "",
-                        "create_time": 0,
-                        "time_str": oh.mtime,
-                        "source_text": f"[图片OCR {oh.mtime}] {oh.text}"[:4000],
-                        "merged": False,
-                    })
-        except Exception as e:  # noqa: BLE001  # 增强通道: 任何失败不阻断主结果
-            state.progress_detail = {"ocr_error": str(e)[:200]}
-
-        # 5.6) 公众号文章正文深挖（卡片只带标题摘要，正文里是完整 JD；
-        #      限速并发抓取，失败/过期链接静默跳过）
-        try:
-            urls = collect_urls(hits)
-            if urls:
-                state.progress_detail = {"article_fetch": len(urls)}
-                arts = fetch_articles(urls, progress=lambda p: setattr(state, "progress_detail", {"article_fetching": p}))
-                best_by_url: dict[str, int] = {}
-                for i, h in enumerate(hits):
-                    am = h.get("apply_method") or ""
-                    if am.startswith("链接 "):
-                        u = am[3:].strip()
-                        if u not in best_by_url or hits[best_by_url[u]].get("confidence", 0) < h.get("confidence", 0):
-                            best_by_url[u] = i
-                for u, art in arts.items():
-                    ah = wx_recruit.analyze((art.title or "") + "\n" + art.text)
-                    if not ah or ah.confidence < 0.5:
-                        continue
-                    idx = best_by_url.get(u)
-                    if idx is not None and (ah.confidence > hits[idx].get("confidence", 0) or len(art.text) > len(hits[idx].get("source_text", "")) * 1.5):
-                        hits[idx]["source_text"] = art.text[:4000]
-                        hits[idx]["confidence"] = ah.confidence
-                        for k in ("company", "title", "cities", "salary", "education", "cohort", "kind", "deadline"):
-                            v = getattr(ah, k, None)
-                            if v and (not hits[idx].get(k) or k in ("cohort", "kind")):
-                                hits[idx][k] = v
-                        hits[idx]["evidence"] = ah.evidence + ["正文深挖（公众号文章全文）"]
-                    elif idx is None:
+            # 5.5) 图片 OCR 增强通道（Windows cache 明文图：海报/截图里的招聘信息；
+            #      .dat 专有容器暂无公开解法，此通道覆盖近期看过的图；失败降级不阻断）
+            try:
+                for oh in run_ocr(account.root / "cache"):
+                    hit = wx_recruit.analyze(oh.text)
+                    if hit and hit.confidence >= min_confidence:
                         hits.append({
-                            **ah.to_dict(),
-                            "talker": "article_fetch",
-                            "talker_name": "文章正文（公众号深挖）",
+                            **hit.to_dict(),
+                            "talker": "image_ocr",
+                            "talker_name": "图片识别（海报/截图）",
                             "sender_name": "",
                             "create_time": 0,
-                            "time_str": "",
-                            "source_text": art.text[:4000],
+                            "time_str": oh.mtime,
+                            "source_text": f"[图片OCR {oh.mtime}] {oh.text}"[:4000],
                             "merged": False,
                         })
-        except Exception as e:  # noqa: BLE001  # 增强通道: 任何失败不阻断主结果
-            state.progress_detail = {"article_error": str(e)[:200]}
-        hits.sort(key=lambda h: (-h["confidence"], h.get("create_time") or 0))
-        state.hits = len(hits)
+            except Exception as e:  # noqa: BLE001  # 增强通道: 任何失败不阻断主结果
+                state.progress_detail = {"ocr_error": str(e)[:200]}
+
+            # 5.6) 公众号文章正文深挖（卡片只带标题摘要，正文里是完整 JD；
+            #      限速并发抓取，失败/过期链接静默跳过）
+            try:
+                urls = collect_urls(hits)
+                if urls:
+                    state.progress_detail = {"article_fetch": len(urls)}
+                    arts = fetch_articles(urls, progress=lambda p: setattr(state, "progress_detail", {"article_fetching": p}))
+                    best_by_url: dict[str, int] = {}
+                    for i, h in enumerate(hits):
+                        am = h.get("apply_method") or ""
+                        if am.startswith("链接 "):
+                            u = am[3:].strip()
+                            if u not in best_by_url or hits[best_by_url[u]].get("confidence", 0) < h.get("confidence", 0):
+                                best_by_url[u] = i
+                    for u, art in arts.items():
+                        ah = wx_recruit.analyze((art.title or "") + "\n" + art.text)
+                        if not ah or ah.confidence < 0.5:
+                            continue
+                        idx = best_by_url.get(u)
+                        if idx is not None and (ah.confidence > hits[idx].get("confidence", 0) or len(art.text) > len(hits[idx].get("source_text", "")) * 1.5):
+                            hits[idx]["source_text"] = art.text[:4000]
+                            hits[idx]["confidence"] = ah.confidence
+                            for k in ("company", "title", "cities", "salary", "education", "cohort", "kind", "deadline"):
+                                v = getattr(ah, k, None)
+                                if v and (not hits[idx].get(k) or k in ("cohort", "kind")):
+                                    hits[idx][k] = v
+                            hits[idx]["evidence"] = ah.evidence + ["正文深挖（公众号文章全文）"]
+                        elif idx is None:
+                            hits.append({
+                                **ah.to_dict(),
+                                "talker": "article_fetch",
+                                "talker_name": "文章正文（公众号深挖）",
+                                "sender_name": "",
+                                "create_time": 0,
+                                "time_str": "",
+                                "source_text": art.text[:4000],
+                                "merged": False,
+                            })
+            except Exception as e:  # noqa: BLE001  # 增强通道: 任何失败不阻断主结果
+                state.progress_detail = {"article_error": str(e)[:200]}
+            hits.sort(key=lambda h: (-h["confidence"], h.get("create_time") or 0))
+            state.hits = len(hits)
 
         # 6) 结果落盘（不含密钥；tmp+rename 原子写，避免轮询读到半文件）
         result = {

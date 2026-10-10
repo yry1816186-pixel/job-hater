@@ -11,12 +11,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
+import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from jobhater.db.connection import transaction
+from jobhater.metrics import ai_provider_requests_total
 from jobhater.services.storage import new_id
+
+logger = logging.getLogger("jobhater.ai")
 
 try:  # keyring 为运行时依赖；缺失时显式降级并拒绝存 key（不静默回退到明文）
     import keyring
@@ -354,10 +359,32 @@ class AIService:
             }
         if not ack_egress:
             raise EgressNotAcknowledged(EGRESS_DISCLOSURES[task])
-        result = provider.complete(
-            TaskRequest(
-                task=task, system=system, user=user,
-                max_tokens=max_tokens, temperature=temperature, json_schema=json_schema,
+        start = time.perf_counter()
+        try:
+            result = provider.complete(
+                TaskRequest(
+                    task=task, system=system, user=user,
+                    max_tokens=max_tokens, temperature=temperature, json_schema=json_schema,
+                )
             )
-        )
+        except Exception:
+            _record_ai_request(provider.adapter_kind, task, "error", start)
+            raise
+        _record_ai_request(provider.adapter_kind, task, "success", start)
         return {"executed": True, "task": task, "result": result}
+
+
+def _record_ai_request(adapter_kind: str, task: str, outcome: str, start: float) -> None:
+    """AI Provider 调用观测落账（BC-009 日志 + BC-010 指标，双通道同字段）。
+
+    日志永不携带 API key（§12 隐私原则）；脱敏兜底由 JsonLogFormatter 负责。
+    """
+    duration_ms = round((time.perf_counter() - start) * 1000, 2)
+    ai_provider_requests_total.labels(
+        provider=adapter_kind, task=task, outcome=outcome
+    ).inc()
+    logger.info(
+        "ai.request",
+        extra={"provider": adapter_kind, "task": task, "outcome": outcome,
+               "duration_ms": duration_ms},
+    )

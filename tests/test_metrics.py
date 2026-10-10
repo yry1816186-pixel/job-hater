@@ -30,7 +30,7 @@ RAW_A = {
 }
 RAW_B = {
     "title": "前端开发工程师",
-    "company": "指标测试科技有限公司",
+    "company": "另一家网络股份有限公司",
     "description": "负责 Web 前端开发。",
 }
 

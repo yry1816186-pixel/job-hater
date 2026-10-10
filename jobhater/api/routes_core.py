@@ -23,6 +23,7 @@ from jobhater.api.schemas import (
     TurnIn,
 )
 from jobhater.db import connect, migration_files
+from jobhater.metrics import METRICS_CONTENT_TYPE, prometheus_text
 from jobhater.services.ai import EgressNotAcknowledged
 from jobhater.services.backup import BackupService
 from jobhater.services.demo import DemoService
@@ -82,6 +83,19 @@ def register(app: FastAPI) -> None:
         if any(v != "ok" for v in checks.values()):
             return JSONResponse(status_code=503, content={"ok": False, "checks": checks})
         return {"ok": True, "version": app.version, "checks": checks}
+
+    # ---------- 进程内自监控指标（BC-010） ----------
+
+    def _metrics() -> Response:
+        """Prometheus 文本暴露（version=0.0.4）：内存累计快照，不持久化不外发。
+
+        经 BC-001/002 中间件同等防护（仅本机回环 Host 可读）；/metrics 为
+        Prometheus 惯例路径、/api/metrics 为本仓 API 命名空间路径（同一处理器）。
+        """
+        return Response(content=prometheus_text(), media_type=METRICS_CONTENT_TYPE)
+
+    app.add_api_route("/metrics", _metrics, methods=["GET"])
+    app.add_api_route("/api/metrics", _metrics, methods=["GET"])
 
     # ---------- 用户设置（本地偏好 KV） ----------
 
