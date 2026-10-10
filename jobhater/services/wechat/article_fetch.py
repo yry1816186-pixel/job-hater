@@ -1,15 +1,25 @@
 """公众号文章正文深挖（卡片只带标题摘要，正文里有完整 JD）。
 
-从命中里的 ``apply_method`` 链接收集唯一 URL，并发抓取（限速防反爬），
+从命中里的 ``apply_method`` 链接收集唯一 URL（白名单：urlsplit 解析后
+hostname == mp.weixin.qq.com 且 https），并发抓取（限速防反爬），
 提取 SSR 页面正文（``js_content`` 区块），返回 ``{url: Article}``。
-失败静默降级——增强通道不阻断主扫描。
+失败降级不阻断主扫描——降级原因经结构化日志可观测（BC-009 地基）。
+
+HTTP 客户端用 httpx（核心依赖，BC-005 迁移自未声明的 requests——
+标准安装下导入 requests 必然失败，通道静默不可用与产品诚实原则相悖）。
 """
 from __future__ import annotations
 
 import html
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from urllib.parse import urlsplit
+
+import httpx
+
+logger = logging.getLogger("jobhater.wechat.article_fetch")
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 _TIMEOUT_S = 12
@@ -21,12 +31,16 @@ _TITLE_RE = re.compile(r"<title>(.*?)</title>", re.DOTALL)
 _CONTENT_RE = re.compile(r'<div[^>]*id="js_content"[^>]*>(.*)', re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")
 
+_http_client: httpx.Client | None = None
 
-def _requests():
-    """requests 惰性导入：缺失时（最小安装环境）本通道降级为不可用。"""
-    import requests  # noqa: PLC0415  # 可选依赖，避免成为全局硬依赖
 
-    return requests
+def _shared_client() -> httpx.Client:
+    """模块级惰性共享 Client（BC-005）：get(url, headers=...) 语义与 requests 一致，
+    超时由 Client 统一（connect+read 均 _TIMEOUT_S），跟随重定向。"""
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.Client(timeout=_TIMEOUT_S, follow_redirects=True)
+    return _http_client
 
 
 @dataclass
@@ -59,18 +73,33 @@ def extract_article(doc: str) -> tuple[str, str]:
 
 def _fetch_one(url: str) -> Article | None:
     try:
-        rq = _requests()
-        r = rq.get(url, headers={"User-Agent": UA}, timeout=_TIMEOUT_S)
+        r = _shared_client().get(url, headers={"User-Agent": UA})
         if "环境异常" in r.text:
             return None
         title, text = extract_article(r.text)
         if len(text) > 60:
             return Article(url=url, title=title[:120], text=text[:_MAX_TEXT])
-    except ImportError:
-        return None
-    except Exception:  # noqa: BLE001  # 网络增强通道：任何请求失败静默跳过
+    except Exception as e:  # noqa: BLE001  # 网络增强通道：任何失败不阻断，但原因必须可观测
+        logger.warning(
+            "article_fetch_unavailable",
+            extra={"reason": type(e).__name__, "url": url, "detail": str(e)[:120]},
+        )
         return None
     return None
+
+
+def _is_weixin_article_url(u: str) -> bool:
+    """SEC-006：白名单按 urlsplit 解析后校验（hostname 全等 + https）。
+
+    子串判断 ``"mp.weixin.qq.com/s" in u`` 可被
+    ``https://attacker.com/x?mp.weixin.qq.com/s`` 类链接绕过——聊天消息驱动的
+    出站请求面必须校验真实目标主机。hostname 属性已小写化（大小写不敏感）。
+    """
+    try:
+        parts = urlsplit(u)
+    except ValueError:
+        return False
+    return parts.scheme == "https" and parts.hostname == "mp.weixin.qq.com"
 
 
 def collect_urls(hits: list[dict], *, limit: int = 2500) -> list[str]:
@@ -84,7 +113,7 @@ def collect_urls(hits: list[dict], *, limit: int = 2500) -> list[str]:
         am = h.get("apply_method") or ""
         if am.startswith("链接 "):
             u = am[3:].strip()
-            if "mp.weixin.qq.com/s" in u:
+            if _is_weixin_article_url(u):
                 scored[u] = max(scored.get(u, 0.0), h.get("confidence", 0.0))
     ranked = sorted(scored, key=lambda u: -scored[u])
     return ranked[:limit]
