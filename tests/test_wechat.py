@@ -526,6 +526,119 @@ def test_api_wechat_import_with_fake_result(tmp_path, monkeypatch):
     config.set_data_dir(None)
 
 
+# ==================== BC-003: 扫描收尾自动清理解密产物 ====================
+
+
+class _DecryptOk:
+    """decrypt_database 替身的成功返回（与 DecryptResult.ok/error 对齐）。"""
+
+    ok = True
+    error = None
+
+
+def _scan_env_with_plain_dbs(tmp_path: Path, monkeypatch, *, key: bytes | None):
+    """构造可跑通全流程的假环境：明文合成库 + 打桩 detect/find_key/verify/decrypt。
+
+    返回 (WeChatService, tmp_path)。decrypt 打桩为「原样拷贝」，解密通道不需要
+    pycryptodome——本组用例只验证收尾清理语义，不测密码学（另有专门用例）。
+    """
+    import shutil as _shutil
+
+    import jobhater.services.wechat.service as svc_mod
+    from jobhater import config
+    from jobhater.services.wechat.detect import WeChatAccount, WeChatEnv
+    from jobhater.services.wechat.service import WeChatService
+
+    config.set_data_dir(tmp_path)
+    src = tmp_path / "wx-src"
+    src.mkdir()
+    msg_db = src / "message_0.db"
+    _mk_msg_db(
+        msg_db,
+        "g@chatroom",
+        [
+            (
+                1, 7, 1700000000, 0,
+                "wxid_hr:\n【2027届校招】云图科技招聘后端工程师 base杭州 25-40k 2027届本科",
+            ),
+        ],
+        with_name2id={7: "wxid_hr"},
+    )
+    contact_db = src / "contact.db"
+    _mk_contact_db(contact_db, [("g@chatroom", "", "求职群", "", 2), ("wxid_hr", "", "", "HR", 1)])
+    account = WeChatAccount(
+        key="wxid_test_acct", wxid="wxid_test", root=src,
+        message_dbs=[msg_db], contact_dbs=[contact_db],
+    )
+    monkeypatch.setattr(
+        svc_mod, "detect_env",
+        lambda: WeChatEnv(platform_ok=True, installed=True, accounts=[account], weixin_pids=[1]),
+    )
+    monkeypatch.setattr(svc_mod, "find_key", lambda *a, **k: key)
+    monkeypatch.setattr(svc_mod, "verify_key", lambda k, page: True)
+
+    def _copy_as_decrypt(db: Path, out: Path, _k):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        _shutil.copyfile(db, out)
+        return _DecryptOk()
+
+    monkeypatch.setattr(svc_mod, "decrypt_database", _copy_as_decrypt)
+    return WeChatService(), tmp_path
+
+
+def test_scan_done_cleans_decrypted_dir(tmp_path: Path, monkeypatch):
+    """BC-003①：完整扫描 done 后 decrypted/ 不存在，结果可读且 hits 数一致。"""
+    svc, data_dir = _scan_env_with_plain_dbs(tmp_path, monkeypatch, key=b"k" * 32)
+    try:
+        svc._run_scan(0.35)
+        assert svc.state.phase == "done", svc.state.error
+        assert not svc.decrypted_dir().exists(), "done 后解密产物应被自动清理"
+        res = svc.results()
+        assert res is not None and len(res["hits"]) >= 1
+        assert len(res["hits"]) == svc.state.hits, "清理不得影响已固化结果"
+    finally:
+        config_set_data_dir_none()
+
+
+def config_set_data_dir_none() -> None:
+    from jobhater import config
+
+    config.set_data_dir(None)
+
+
+def test_scan_failed_key_missing_cleans_decrypted_dir(tmp_path: Path, monkeypatch):
+    """BC-003②：密钥缺失 failed 路径同样清理（含历史残留）。"""
+    svc, _ = _scan_env_with_plain_dbs(tmp_path, monkeypatch, key=None)
+    leftover = svc.decrypted_dir() / "历史残留"
+    leftover.mkdir(parents=True)
+    leftover.write_text("stale plaintext", encoding="utf-8")
+    try:
+        svc._run_scan(0.35)
+        assert svc.state.phase == "failed"
+        assert not svc.decrypted_dir().exists(), "failed 收尾应清理解密产物（含旧残留）"
+    finally:
+        config_set_data_dir_none()
+
+
+def test_scan_exception_fallback_cleans_decrypted_dir(tmp_path: Path, monkeypatch):
+    """BC-003③：_run_scan 异常兜底分支同样清理。"""
+    svc, _ = _scan_env_with_plain_dbs(tmp_path, monkeypatch, key=b"k" * 32)
+    svc.decrypted_dir().mkdir(parents=True)
+    import jobhater.services.wechat.service as svc_mod
+
+    def _boom(*a, **k):
+        raise RuntimeError("合成故障：解析崩溃")
+
+    monkeypatch.setattr(svc_mod.wx_parser, "iter_messages", _boom)
+    try:
+        svc._run_scan(0.35)
+        assert svc.state.phase == "failed"
+        assert "合成故障" in (svc.state.error or "")
+        assert not svc.decrypted_dir().exists(), "异常兜底应清理解密产物"
+    finally:
+        config_set_data_dir_none()
+
+
 # ==================== 密码式验证 / 结构定位 / DLL XOR（社区方法产品化） ====================
 
 
