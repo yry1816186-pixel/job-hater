@@ -597,6 +597,117 @@ def test_api_wechat_import_with_fake_result(tmp_path, monkeypatch):
     config.set_data_dir(None)
 
 
+# ==================== BC-006: hit_id 内容寻址 + results/import 契约 ====================
+
+
+def _fake_hit(*, talker="g@chatroom", create_time=1700000000, title="后端工程师",
+              company="测试科技有限公司", conf=0.9, cohort=2027) -> dict:
+    return {
+        "company": company, "title": title, "cities": ["北京"], "salary": "20-40k",
+        "education": "本科", "cohort": cohort, "kind": "campus", "deadline": None,
+        "apply_method": None, "confidence": conf, "evidence": [], "is_recruiter_side": True,
+        "talker": talker, "talker_name": "求职群", "sender_name": "HR",
+        "create_time": create_time, "time_str": "2023-11-15 06:13",
+        "source_text": f"【2027届校招】{company}招聘{title} base北京 20-40k",
+        "merged": False,
+    }
+
+
+def _write_scan_result(svc, hits: list[dict]) -> None:
+    import json
+    import time as _time
+
+    result = {"generated_at": _time.time(), "account": "wxid_test", "stats": {}, "hits": hits}
+    svc.result_path().write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+
+
+def test_hit_id_content_addressed_and_stable():
+    """BC-006：hit_id=sha1(talker|create_time|title|company[:60])[:16]，内容定身。"""
+    from jobhater.services.wechat.service import hit_id_for
+
+    base = {"talker": "g@chatroom", "create_time": 1700000000, "title": "后端", "company": "甲公司"}
+    hid = hit_id_for(base)
+    assert len(hid) == 16
+    assert hit_id_for(dict(base)) == hid  # 纯内容函数：同内容同 id
+    assert hit_id_for({**base, "title": "前端"}) != hid
+    assert hit_id_for({**base, "talker": "other@chatroom"}) != hid
+    # company 截断 60 字：60 字以后的变化不影响 id
+    long_a = hit_id_for({**base, "company": "长" * 80})
+    long_b = hit_id_for({**base, "company": "长" * 60})
+    assert long_a == long_b
+
+
+def test_results_total_equals_filtered_hits_and_echoes_filters(tmp_path):
+    """BC-006①③：total=len(过滤后 hits)（不再回未过滤总数）；applied_filters 逐键回显。"""
+    from fastapi.testclient import TestClient
+
+    from jobhater import config
+    from jobhater.api.app import create_app
+    from jobhater.services.wechat.service import WeChatService
+
+    config.set_data_dir(tmp_path)
+    svc = WeChatService()
+    _write_scan_result(svc, [
+        _fake_hit(title="后端工程师", company="甲公司", conf=0.9),
+        _fake_hit(title="前端工程师", company="乙公司", conf=0.5),
+        _fake_hit(title="算法工程师", company="丙公司", conf=0.3),
+    ])
+    try:
+        with TestClient(create_app()) as client:
+            r = client.get("/api/wechat/results", params={"min_confidence": 0.6})
+            assert r.status_code == 200
+            body = r.json()
+            assert body["total"] == len(body["hits"]) == 1
+            assert body["applied_filters"] == {
+                "cohort": None, "kind": None, "min_confidence": 0.6, "q": None,
+            }
+            # 过滤后空集：契约字段依旧在场
+            r2 = client.get("/api/wechat/results", params={"cohort": 2031})
+            b2 = r2.json()
+            assert b2["hits"] == [] and b2["total"] == 0
+            assert b2["applied_filters"]["cohort"] == 2031
+    finally:
+        config_set_data_dir_none()
+
+
+def test_import_by_hit_ids_survives_shuffle_and_mismatch_422(tmp_path):
+    """BC-006②：落盘结果打乱顺序后按 hit_ids 导入——集合与选择一致（旧 indices 语义必失败）。"""
+    from fastapi.testclient import TestClient
+
+    from jobhater import config
+    from jobhater.api.app import create_app
+    from jobhater.services.wechat.service import WeChatService
+
+    config.set_data_dir(tmp_path)
+    svc = WeChatService()
+    hits = [
+        _fake_hit(talker="a@chatroom", create_time=1, title="后端工程师", company="甲公司"),
+        _fake_hit(talker="b@chatroom", create_time=2, title="前端工程师", company="乙公司"),
+        _fake_hit(talker="c@chatroom", create_time=3, title="算法工程师", company="丙公司"),
+    ]
+    _write_scan_result(svc, hits)
+    try:
+        with TestClient(create_app()) as client:
+            # 读路径为（缺 hit_id 的）老结果文件补齐内容寻址键
+            ids = [h["hit_id"] for h in client.get("/api/wechat/results").json()["hits"]]
+            assert len(set(ids)) == 3
+            # 结果文件被重写且顺序完全打乱——位置引用即刻失效，内容键不漂移
+            _write_scan_result(svc, list(reversed(hits)))
+            selected = [ids[0], ids[2]]
+            r = client.post("/api/wechat/import", json={"hit_ids": selected})
+            assert r.status_code == 200, r.text
+            assert r.json()["added"] == 2, r.json()
+            items = client.get("/api/jobs", params={"limit": 50}).json()["items"]
+            titles = {j["title"] for j in items}
+            assert {hits[0]["title"], hits[2]["title"]} <= titles
+            assert hits[1]["title"] not in titles, "未被选择的行不得入库"
+            # hit_ids 全部失配 → 422（结果已被刷新等场景）
+            r = client.post("/api/wechat/import", json={"hit_ids": ["deadbeefdeadbeef"]})
+            assert r.status_code == 422
+    finally:
+        config_set_data_dir_none()
+
+
 # ==================== BC-003: 扫描收尾自动清理解密产物 ====================
 
 
