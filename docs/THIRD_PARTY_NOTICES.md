@@ -9,6 +9,8 @@
 | httpx | AI Provider HTTP 客户端 | BSD-3 |
 | keyring | 操作系统钥匙串访问 | MIT |
 | jieba | 中文分词（FTS 检索增强；已列为主依赖，缺失时退回字符 bigram） | MIT |
+| python-json-logger | 结构化 JSON 日志 formatter（仅写 stderr，不落盘） | BSD-2-Clause |
+| prometheus-client | 进程内自监控指标（内存累计不外发，/metrics 仅本机回环可读） | Apache-2.0 AND BSD-2-Clause |
 | python-docx（可选 `[docx]`） | 简历 DOCX 导出 | MIT |
 | Playwright（可选 `[pdf]`） | 简历 PDF 导出（无头浏览器打印） | Apache-2.0 |
 | mcp（可选 `[mcp]`） | MCP Agent 接口（官方 SDK） | MIT |

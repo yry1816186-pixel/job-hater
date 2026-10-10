@@ -1,0 +1,6 @@
+# sdist 完整性清单（LOG-006）：wheel 经 [tool.setuptools.package-data] 覆盖，
+# 源码分发（pip install 从 sdist 构建）依赖本清单携带非 .py 运行资产。
+# - db/migrations/*.sql：启动即迁移的全部 schema
+# - services/wechat/*.ps1：Windows 微信 4.x OCR 采集脚本（缺失时该增强通道降级）
+recursive-include jobhater *.sql
+recursive-include jobhater *.ps1
