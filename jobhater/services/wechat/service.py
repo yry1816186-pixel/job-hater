@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import shutil
@@ -40,6 +41,21 @@ from jobhater.services.wechat.ocr import run_ocr
 # 同发送者在同一会话内的消息合并窗口（秒）：拆成多条发的 JD 能拼回整体
 BURST_WINDOW_S = 180
 MIN_CONFIDENCE = 0.35
+
+
+def hit_id_for(hit: dict) -> str:
+    """内容寻址稳定键（BC-006）：sha1(talker|create_time|title|company[:60])[:16]。
+
+    取代「过滤后列表的枚举序号」作为导入选择键——序号在两端过滤参数差异或
+    结果刷新时即刻漂移导错行；内容键与 ingest 去重链的内容指纹同模式，跨刷新稳定。
+    """
+    basis = "|".join((
+        str(hit.get("talker") or ""),
+        str(hit.get("create_time") or ""),
+        str(hit.get("title") or ""),
+        str(hit.get("company") or "")[:60],
+    ))
+    return hashlib.sha1(basis.encode("utf-8")).hexdigest()[:16]
 
 
 @contextlib.contextmanager
@@ -319,6 +335,9 @@ class WeChatService:
             state.hits = len(hits)
 
         # 6) 结果落盘（不含密钥；tmp+rename 原子写，避免轮询读到半文件）
+        #    每条 hit 标注内容寻址 hit_id（BC-006）——导入选择键随结果固化
+        for h in hits:
+            h.setdefault("hit_id", hit_id_for(h))
         result = {
             "generated_at": time.time(),
             "account": account.wxid,
@@ -405,6 +424,12 @@ class WeChatService:
         if not p.exists():
             return None
         try:
-            return json.loads(p.read_text(encoding="utf-8"))
+            res = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
+        # 老结果文件（BC-006 之前落盘）缺 hit_id：读路径按同一公式补齐，
+        # 使导入选择键对新旧结果一致可用
+        for h in res.get("hits", []):
+            if "hit_id" not in h:
+                h["hit_id"] = hit_id_for(h)
+        return res

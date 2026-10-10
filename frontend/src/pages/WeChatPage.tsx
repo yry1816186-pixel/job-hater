@@ -16,6 +16,7 @@ interface WxEnv {
 }
 
 interface WxHit {
+  hit_id: string
   company?: string | null
   title?: string | null
   cities: string[]
@@ -49,6 +50,12 @@ interface WxResults {
   stats?: Record<string, number> | null
   generated_at?: number | null
   total: number
+  applied_filters?: {
+    cohort: number | null
+    kind: string | null
+    min_confidence: number
+    q: string | null
+  }
 }
 
 const PHASE_LABEL: Record<string, string> = {
@@ -130,8 +137,9 @@ export default function WeChatPage() {
     setImporting(true)
     setImportMsg('')
     try {
-      const body: Record<string, unknown> = { min_confidence: minConf }
-      if (cohortFilter !== '') body.cohort = cohortFilter
+      // BC-006：回传当前筛选视图各行的内容寻址 hit_id——导入集合与所见集合严格一致，
+      // 不再依赖两端各自过滤（服务端关键词/类型过滤与本地不一致时会导错行）
+      const body: Record<string, unknown> = { hit_ids: filtered.map((h) => h.hit_id) }
       const r = await api.post<{ message: string }>('/wechat/import', body)
       setImportMsg(r.message)
     } catch (e) {
@@ -312,8 +320,8 @@ export default function WeChatPage() {
           </div>
 
           {/* 渲染上限：全量命中数千条时一次渲染会卡死页面；截断展示，筛选后看全部 */}
-          {filtered.slice(0, 100).map((h, i) => (
-            <div key={i} className="card" style={{ marginBottom: 10 }}>
+          {filtered.slice(0, 100).map((h) => (
+            <div key={h.hit_id} className="card" style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                 <b style={{ fontSize: 15 }}>{h.title ?? '（未识别岗位名）'}</b>
                 {h.company && <span>@ {h.company}</span>}

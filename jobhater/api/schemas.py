@@ -110,7 +110,9 @@ class WeChatScanIn(BaseModel):
 
 
 class WeChatImportIn(BaseModel):
-    indices: list[int] = Field(default_factory=list)  # 空 = 全部导入
+    """BC-006：hit_ids（内容寻址键，sha1(talker|create_time|title|company[:60])[:16]）
+    取代 indices——序号在两端过滤差异/结果刷新时漂移导错行；空 = 按过滤条件全部导入。"""
+    hit_ids: list[str] = Field(default_factory=list)
     min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     cohort: int | None = None  # 只导指定届别（如 2027）
     gates: dict = Field(default_factory=dict)

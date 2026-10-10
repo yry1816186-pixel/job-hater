@@ -59,10 +59,19 @@ def register(app: FastAPI) -> None:
         min_confidence: float = 0.0,
         q: str | None = None,
     ):
-        """读取上次扫描结果（可按届别/类型/置信度/关键词过滤，前端本地翻页）。"""
+        """读取上次扫描结果（可按届别/类型/置信度/关键词过滤，前端本地翻页）。
+
+        BC-006 契约：total=len(过滤后 hits)（不再回未过滤总数）；
+        applied_filters 回显实际生效的过滤参数。
+        """
+        applied_filters = {
+            "cohort": cohort, "kind": kind,
+            "min_confidence": min_confidence, "q": q,
+        }
         res = request.app.state.wechat.results()
         if res is None:
-            return {"hits": [], "stats": None, "generated_at": None}
+            return {"hits": [], "stats": None, "generated_at": None,
+                    "total": 0, "applied_filters": applied_filters}
         hits = res.get("hits", [])
         if cohort is not None:
             hits = [h for h in hits if h.get("cohort") == cohort]
@@ -84,22 +93,33 @@ def register(app: FastAPI) -> None:
             "hits": hits,
             "stats": res.get("stats"),
             "generated_at": res.get("generated_at"),
-            "total": len(res.get("hits", [])),
+            "total": len(hits),
+            "applied_filters": applied_filters,
         }
 
     @app.post("/api/wechat/import")
     def wechat_import(inp: WeChatImportIn, request: Request, con=Depends(get_con)):
-        """把选中命中导入岗位库（走统一 ingest 链：去重/规范化/FTS）。"""
+        """把选中命中导入岗位库（走统一 ingest 链：去重/规范化/FTS）。
+
+        BC-006：hit_ids 非空时按内容寻址键选择（选择即权威，不再叠加服务端
+        过滤——消除两端过滤参数耦合）；空 = 按服务端过滤条件全部导入。
+        """
         res = request.app.state.wechat.results()
         if res is None:
             raise HTTPException(404, "尚无扫描结果，请先扫描")
         hits = res.get("hits", [])
-        if inp.cohort is not None:
-            hits = [h for h in hits if h.get("cohort") == inp.cohort]
-        hits = [h for h in hits if h.get("confidence", 0) >= inp.min_confidence]
-        if inp.indices:
-            wanted = set(inp.indices)
-            hits = [h for i, h in enumerate(hits) if i in wanted]
+        if inp.hit_ids:
+            by_id = {h.get("hit_id"): h for h in hits if h.get("hit_id")}
+            selected = [by_id[i] for i in dict.fromkeys(inp.hit_ids) if i in by_id]
+            if not selected:
+                raise HTTPException(
+                    422, "hit_ids 全部失配——扫描结果可能已被刷新，请重新获取结果后重试"
+                )
+            hits = selected
+        else:
+            if inp.cohort is not None:
+                hits = [h for h in hits if h.get("cohort") == inp.cohort]
+            hits = [h for h in hits if h.get("confidence", 0) >= inp.min_confidence]
         raw_jobs = []
         for h in hits:
             url = None
