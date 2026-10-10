@@ -119,8 +119,9 @@ def test_scan_pipeline_offline(tmp_path: Path):
     # 密钥绝不落盘
     raw = json.dumps(res)
     assert key.hex() not in raw
-    # 解密产物在数据目录下且可清除（先取路径再 purge：work_dir() 调用会自建目录）
-    assert svc.decrypted_dir().exists()
+    # BC-003/SEC-003：扫描收尾自动清理解密产物——明文整库不驻留磁盘
+    # （先取路径再 purge：work_dir() 调用会自建目录）
+    assert not svc.decrypted_dir().exists()
     wd = svc.work_dir()
     svc.purge()
     assert not wd.exists() and not svc.result_path().exists()
