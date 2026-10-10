@@ -42,8 +42,14 @@
 用户 ACL；Unix 下位于 `$HOME`，文件按进程 umask 创建）。产品不做额外的 chmod/加密层。
 
 **浏览器面**：本地 `serve` 模式只绑 `127.0.0.1`（`jobhater/cli.py` 默认 `--host 127.0.0.1`），
-且响应不带 CORS 头——其他网站无法跨源读取 API 响应。但 **API 本身无认证**，本机其他进程
-可直接访问；DNS rebinding 在理论上可绕过源隔离。Docker 部署是例外，见「网络面」。
+且响应不带 CORS 头——其他网站无法跨源读取 API 响应。**API 无用户认证**，但
+`jobhater/api/security.py` 的 Host/Origin 中间件已在代码层闭合两条浏览器侧攻击链：
+Host 主机名白名单（仅 `127.0.0.1`/`localhost`/`::1`，端口无关）阻断 DNS rebinding；
+`/api/*` 写方法（POST/PATCH/PUT/DELETE）的 Origin 校验（回环 http(s) 源与
+`chrome-extension://`/`moz-extension://` 扩展源放行，其余含 `null` 拒绝）阻断跨站写
+（CSRF，含 `/api/backup/restore` 的 multipart 隐藏表单攻击链）。无 Origin 头的
+非浏览器客户端（curl/CLI/MCP）放行——该威胁模型下攻击者可直接写数据库文件，
+API 层加固无增益。Docker 部署是例外，见「网络面」。
 
 **日志脱敏**：服务端没有会打印请求体/响应体的日志（uvicorn 访问日志只含方法/路径/状态码；
 API Key 只出现在 POST 请求体内，不会进入访问日志）；`jobhater/` 包内无文件日志落盘；
@@ -153,8 +159,12 @@ AI 调用失败的错误消息只含 provider 地址与 HTTP 异常文本，不�
   docker-compose 的端口映射默认已收口为 `127.0.0.1:8787:8787`（无认证 API 不暴露给局域网）；
   直接 `docker run -p 8787:8787` 或需要局域网访问时，请自行加防火墙规则或反向代理认证。
 - 明文 SQLite：数据目录不做额外加密（威胁模型内）；如需静态加密请用系统级方案（如 BitLocker/FileVault）。
-- 无 CORS 头 + API 无认证：浏览器同源策略之外的攻击面（DNS rebinding）理论上可行——
-  本机单人使用不受影响；暴露到网络前请先解决认证。
+- Host/Origin 中间件（`jobhater/api/security.py`）：DNS rebinding 与跨站写已在代码层闭合
+  （Host 白名单仅回环、端口无关；写方法 Origin 校验）。残留面如实披露：本机其他进程可无 Origin
+  直连 API（此时其亦可直写数据目录，API 层加固无增益）；用户自装的、持有 localhost
+  host_permissions 的恶意扩展不受本中间件约束（扩展本就在浏览器授权内访问回环）。
+  局域网部署可用环境变量 `JOBHATER_ALLOWED_HOSTS` 追加放行主机名（逗号分隔，含端口写法
+  按主机名归一化），等于显式扩大信任面，风险自担；除此之外暴露到网络前请先解决认证。
 
 ## 3.0.0 新攻击面评估（浏览器扩展 / 备份恢复 / 设置 KV / ATS 报告）
 
