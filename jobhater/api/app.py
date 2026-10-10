@@ -14,7 +14,16 @@ from jobhater.db import apply_all
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     apply_all()  # 启动即迁移（幂等）
-    yield
+    from jobhater.services.wechat.service import WeChatService
+
+    # ARCH-002：WeChatService 生命周期挂 app.state——lifespan 启动时创建、
+    # 关闭时 stop_scan 收尾后台线程；路由处理器经 request.app.state.wechat 访问，
+    # 不再在路由注册期构造进程级单例。
+    app.state.wechat = WeChatService()
+    try:
+        yield
+    finally:
+        app.state.wechat.stop_scan()
 
 
 def create_app() -> FastAPI:

@@ -1,22 +1,20 @@
 """微信本地数据源端点（环境检测/扫描/结果/导入/清除）。
 
 自 routes.py 纯搬移（BC-007）：URL/方法/schema/错误语义逐字不变。
+ARCH-002：服务实例挂 app.state.wechat（lifespan 创建、关闭即 stop_scan），
+处理器经 request.app.state.wechat 访问（Request 形参不进 OpenAPI schema）。
 """
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 
 from jobhater.api.deps import get_con
 from jobhater.api.schemas import WeChatImportIn, WeChatScanIn
 from jobhater.services.jobs import JobService
+from jobhater.services.wechat.detect import detect as detect_env
 
 
 def register(app: FastAPI) -> None:
-    from jobhater.services.wechat.detect import detect as detect_env
-    from jobhater.services.wechat.service import WeChatService
-
-    _wx = WeChatService()  # 进程级单例：持有后台扫描线程与状态
-
     @app.get("/api/wechat/env")
     def wechat_env():
         """环境检测：微信安装/账号数据/进程状态 + 阻塞项指引（只读、秒级）。"""
@@ -40,28 +38,29 @@ def register(app: FastAPI) -> None:
         }
 
     @app.post("/api/wechat/scan")
-    def wechat_scan(inp: WeChatScanIn):
+    def wechat_scan(inp: WeChatScanIn, request: Request):
         """启动后台全流程扫描（检测→密钥→解密→解析→识别）。幂等：已在跑返回状态。"""
-        return _wx.start_scan(min_confidence=inp.min_confidence)
+        return request.app.state.wechat.start_scan(min_confidence=inp.min_confidence)
 
     @app.get("/api/wechat/status")
-    def wechat_status():
-        return _wx.status()
+    def wechat_status(request: Request):
+        return request.app.state.wechat.status()
 
     @app.post("/api/wechat/stop")
-    def wechat_stop():
-        _wx.stop_scan()
-        return _wx.status()
+    def wechat_stop(request: Request):
+        request.app.state.wechat.stop_scan()
+        return request.app.state.wechat.status()
 
     @app.get("/api/wechat/results")
     def wechat_results(
+        request: Request,
         cohort: int | None = None,
         kind: str | None = None,
         min_confidence: float = 0.0,
         q: str | None = None,
     ):
         """读取上次扫描结果（可按届别/类型/置信度/关键词过滤，前端本地翻页）。"""
-        res = _wx.results()
+        res = request.app.state.wechat.results()
         if res is None:
             return {"hits": [], "stats": None, "generated_at": None}
         hits = res.get("hits", [])
@@ -89,9 +88,9 @@ def register(app: FastAPI) -> None:
         }
 
     @app.post("/api/wechat/import")
-    def wechat_import(inp: WeChatImportIn, con=Depends(get_con)):
+    def wechat_import(inp: WeChatImportIn, request: Request, con=Depends(get_con)):
         """把选中命中导入岗位库（走统一 ingest 链：去重/规范化/FTS）。"""
-        res = _wx.results()
+        res = request.app.state.wechat.results()
         if res is None:
             raise HTTPException(404, "尚无扫描结果，请先扫描")
         hits = res.get("hits", [])
@@ -132,7 +131,7 @@ def register(app: FastAPI) -> None:
         return out
 
     @app.delete("/api/wechat/data")
-    def wechat_purge():
+    def wechat_purge(request: Request):
         """清除解密产物与结果缓存（不动微信本体数据）。"""
-        _wx.purge()
+        request.app.state.wechat.purge()
         return {"ok": True}

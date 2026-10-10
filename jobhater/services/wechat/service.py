@@ -73,6 +73,7 @@ class WeChatService:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        self._stop_flag = threading.Event()  # ARCH-002: 跨线程停止信号（原子置位/清除）
         self.state = ScanState()
 
     # ---------- 目录 ----------
@@ -111,11 +112,9 @@ class WeChatService:
         return out
 
     def stop_scan(self) -> None:
-        self._stop_flag = True
+        self._stop_flag.set()
         if self._thread is not None:
             self._thread.join(timeout=5)
-
-    _stop_flag = False
 
     def start_scan(self, *, min_confidence: float = MIN_CONFIDENCE) -> dict:
         """启动后台全流程扫描。已在跑 → 返回当前状态（幂等）。"""
@@ -123,7 +122,7 @@ class WeChatService:
             if self.running:
                 return self.status()
             self.state = ScanState(phase="detecting", started_at=time.time())
-            self._stop_flag = False
+            self._stop_flag.clear()
             self._thread = threading.Thread(target=self._run_scan, args=(min_confidence,), daemon=True)
             self._thread.start()
         return self.status()
@@ -168,8 +167,8 @@ class WeChatService:
         def _prog(p: dict) -> None:
             state.progress_detail = dict(p)
 
-        key = find_key(anchors, progress=lambda pr: _prog(pr.to_dict()), stop_check=lambda: self._stop_flag)
-        if self._stop_flag:
+        key = find_key(anchors, progress=lambda pr: _prog(pr.to_dict()), stop_check=lambda: self._stop_flag.is_set())
+        if self._stop_flag.is_set():
             state.phase = "idle"
             return
         if key is None:
@@ -189,13 +188,13 @@ class WeChatService:
         keys: dict[bytes, None] = {key: None}  # 已知密钥集合(按 salt 试全部)
         decrypted: dict[str, Path] = {}
         for _kind, db in want:
-            if self._stop_flag:
+            if self._stop_flag.is_set():
                 state.phase = "idle"
                 return
             p1 = db.read_bytes()[:4096]
             k = next((c for c in keys if verify_key(c, p1)), None)
             if k is None:
-                k = find_key(p1, stop_check=lambda: self._stop_flag)
+                k = find_key(p1, stop_check=lambda: self._stop_flag.is_set())
                 if k is not None:
                     keys[k] = None
             if k is None:
