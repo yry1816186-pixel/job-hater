@@ -257,6 +257,39 @@ def test_stats_salary_insights_honest_sample_note(env):
     assert {"杭州", "北京"} <= cities
 
 
+def test_stats_top_employers_progressed_covers_post_apply_states(env):
+    """BC-004：progressed 计数以 ApplicationStatus 枚举为真相源——投后各阶段
+    （assessment/interviewing/offer/rejected/closed）全部计入，不再系统性偏低。"""
+    con, pid, _, _ = env
+    JobService(con).ingest(
+        [{"title": f"后端方向岗位{i}", "company": "同一雇主集团", "description": "JD"}
+         for i in range(6)],
+        source_id="t",
+    )
+    jobs = [j for j in JobService(con).search("") if j.employer_name == "同一雇主集团"]
+    assert len(jobs) == 6
+    apps = ApplicationService(con)
+    ids = [apps.create(j.id, pid) for j in jobs]
+    apps.confirm_applied(ids[0])
+    apps.transition(ids[0], "assessment")
+    apps.confirm_applied(ids[1])
+    apps.transition(ids[1], "interviewing")
+    apps.confirm_applied(ids[2])
+    apps.transition(ids[2], "assessment")
+    apps.transition(ids[2], "interviewing")
+    apps.transition(ids[2], "offer")
+    apps.confirm_applied(ids[3])
+    apps.transition(ids[3], "rejected")
+    apps.confirm_applied(ids[4])
+    apps.transition(ids[4], "closed")
+    apps.transition(ids[5], "saved")  # 投前状态不计入 progressed
+    top = StatsService(con).top_employers()
+    row = top[0]
+    assert row["employer"] == "同一雇主集团"
+    assert row["n"] == 6
+    assert row["progressed"] == 5, "assessment/interviewing/offer/rejected/closed 各 1 应全部计入"
+
+
 # ---------- 备份恢复 ----------
 
 def test_backup_snapshot_restore_roundtrip(env):
