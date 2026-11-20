@@ -73,8 +73,10 @@ def _candidate_roots() -> list[Path]:
         roots.append(Path(env))
     home = Path.home()
     roots.append(home / "Documents" / "Tencent Files")
-    # 云盘重定向常见位（实测本机命中 D:\小米云盘\文档\Tencent Files）
-    for drive in ("D:", "E:"):
+    # 云盘重定向常见位（实测本机命中 D:\小米云盘\文档\Tencent Files）。
+    # 注意 Path('D:')/'x' 生成的是**相对路径** 'D:x'（丢盘符斜杠）——
+    # 必须从 'D:\\' 起拼（实测踩坑）。
+    for drive in ("D:\\", "E:\\"):
         for cloud in ("小米云盘", "百度网盘", "坚果云", "OneDrive"):
             p = Path(drive) / cloud / "文档" / "Tencent Files"
             if p.is_dir():
