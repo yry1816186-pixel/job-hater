@@ -103,6 +103,8 @@ job-hater fetch --companies mihoyo        # 官网信源抓取（米哈游/百�
 | 校招官网适配器 | `job-hater fetch --companies mihoyo,baidu,netease`（米哈游/百度/网易校招官网公开 JSON API，来自 MIT 项目 wenke-radar 的移植，限速抓取） | ✅ 已接入 |
 | **JD 补全引擎**（v3.3） | `job-hater enrich`：对已入库岗位按官网链接直读 JD 全文——十三路 provider（字节系/北森/米哈游/百度/网易/微信 + **阿里/腾讯/美团** + **Greenhouse/Lever/Ashby/Workday** 国际 ATS，端点规格移植自 MIT 项目 career-ops）；断点续跑、per-host 限速、标题反查防串岗审计 | ✅ 阿里/腾讯/美团详情直读 + 列表 URL 标题反查 |
 | **判活阶梯**（v3.3） | `job-hater liveness`：投递前零成本确认岗位存活——Tier1 官方接口业务码（下线码/404）→ Tier2 静态页硬关键词（中英双语）；保守判死（429/5xx/模糊一律「不确定」，绝不误杀真岗），死岗标 expired 并留证据账本 | ✅ |
+| **文件收件箱**（v3.5） | 「文件收件箱」页/`job-hater inbox --scan`：拖文件进 `~/.jobhater/inbox/`——在线表格导出（xlsx/csv 列头智能映射）、JD 文档（pdf/docx/txt/md 双解析器）、招聘海报截图（Windows 内置 OCR）→ 解析 → 勾选过目 → 入库，原件留证 | ✅ 实测 5840 行总表→4340 条 |
+| **QQ 数据面**（v3.5） | QQ NT 库解密能力层（实战配方产品化，密钥仅内存流转）+ 环境探测；QQ 运行且登录后可用 | ⏸ 本机 QQ 已卸载（如实降级，重装后即活） |
 | 官方 API 适配器 | `SourceAdapter` 插件契约（capabilities/health_check/rate_policy/provenance） | 契约就绪，适配器按源渐进接入 |
 | MCP | `job-hater-mcp`（19 个工具，官方 SDK：新增 stats_overview/stats_salary/ats_scan/reminders_list） | ✅ Agent 增强层 |
 

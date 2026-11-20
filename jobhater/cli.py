@@ -45,6 +45,9 @@ def main(argv: list[str] | None = None) -> int:
     p_live.add_argument("--limit", type=int, default=20, help="本次最多检查条数")
     p_live.add_argument("--job-id", default=None, help="只查单个岗位")
     p_live.add_argument("--stats", action="store_true", help="只看判活统计，不检查")
+    p_inbox = sub.add_parser("inbox", help="文件收件箱：拖入表格/JD 文件/截图 → 解析 → 过目入库")
+    p_inbox.add_argument("--scan", action="store_true", help="立即扫描 inbox/ 目录（同步）")
+    p_inbox.add_argument("--stats", action="store_true", help="看最近一次解析结果概要")
     p_jobs = sub.add_parser("jobs", help="列出/检索岗位")
     p_jobs.add_argument("--q", default="", help="检索词")
     p_jobs.add_argument("--limit", type=int, default=30)
@@ -255,6 +258,25 @@ def main(argv: list[str] | None = None) -> int:
                   f"不确定 {c['uncertain']}")
             for e in out["expired_jobs"]:
                 print(f"  ⏹ {e['title']} [{e['code']}] {e['job_id']}")
+            return 0
+
+        if args.cmd == "inbox":
+            from jobhater.services.inbox import InboxService
+
+            svc = InboxService(con)
+            if args.scan:
+                out = svc.scan()
+                print(f"扫描 {out['files']} 个文件：解析出 {out['items']} 条岗位"
+                      f"（缺公司需补 {out['needs_review']} 条）")
+                print(f"目录：{svc.inbox_dir()}")
+                print("入库请在 Web 界面「文件收件箱」页勾选导入（过目后生效）。")
+                return 0
+            res = svc.results()
+            print(f"最近解析：{len(res['items'])} 条（来自 {len(res['files'])} 个文件）")
+            for i, it in enumerate(res["items"][:20]):
+                mark = "⚠️" if not it.get("company") else " "
+                print(f"  [{i}] {mark} {it.get('title', '')[:26]} @ {it.get('company', '（缺公司）')}"
+                      f" {it.get('city', '')[:8]}")
             return 0
 
         if args.cmd == "jobs":

@@ -187,6 +187,10 @@ class LivenessRunIn(BaseModel):
     limit: int = Field(20, ge=1, le=200)
 
 
+class InboxImportIn(BaseModel):
+    indices: list[int] = Field(default_factory=list)
+
+
 class ApplicationIn(BaseModel):
     job_id: str
     profile_id: str
@@ -738,6 +742,42 @@ def register_routes(app: FastAPI) -> None:
         from jobhater.services.liveness import LivenessService
 
         return LivenessService(con).stats()
+
+    # ---------- 文件收件箱（v3.5：拖文件→解析→过目→入库） ----------
+
+    @app.get("/api/inbox/status")
+    def inbox_status():
+        from jobhater.services.inbox import InboxService
+
+        return InboxService().status()
+
+    @app.post("/api/inbox/scan")
+    def inbox_scan():
+        from jobhater.services.inbox import InboxService
+
+        svc = InboxService()
+        svc.start_scan()
+        return svc.status()
+
+    @app.get("/api/inbox/results")
+    def inbox_results(q: str = ""):
+        from jobhater.services.inbox import InboxService
+
+        return InboxService().results(q=q)
+
+    @app.post("/api/inbox/import")
+    def inbox_import(body: InboxImportIn, con=Depends(get_con)):
+        from jobhater.services.inbox import InboxService
+
+        return InboxService(con=con).import_items(body.indices)
+
+    # ---------- QQ 数据面（v3.5：环境探测 + 解密能力，如实报边界） ----------
+
+    @app.get("/api/qq/env")
+    def qq_env():
+        from jobhater.services.qq import detect as qq_detect
+
+        return qq_detect.detect().to_dict()
 
     @app.get("/api/sources")
     def list_sources(con=Depends(get_con)):
