@@ -61,6 +61,24 @@ def main(argv: list[str] | None = None) -> int:
     p_confirm.add_argument("application_id")
     p_confirm.add_argument("--channel", default=None, help="投递渠道（官网/BOSS/内推…）")
 
+    p_profile = sub.add_parser("profile", help="画像管理：列出/建立（简历文本可自动入档）")
+    profile_sub = p_profile.add_subparsers(dest="profile_cmd", required=True)
+    profile_sub.add_parser("list", help="列出全部画像（拿 profile_id）")
+    p_pc = profile_sub.add_parser("create", help="建立画像；--resume-file 简历文本自动提取技能/经历/教育")
+    p_pc.add_argument("--name", default="", help="姓名（不给则从简历文本识别）")
+    p_pc.add_argument("--headline", default="", help="一句话介绍/求职意向")
+    p_pc.add_argument("--resume-file", default=None, help="简历文本文件（txt/md）")
+
+    p_preset = sub.add_parser("preset", help="设定求职偏好（匹配的全部依据；更新激活项）")
+    p_preset.add_argument("--profile", required=True)
+    p_preset.add_argument("--name", default="求职偏好")
+    p_preset.add_argument("--role", action="append", default=[], help="目标角色，可多次")
+    p_preset.add_argument("--city", action="append", default=[], help="目标城市，可多次")
+    p_preset.add_argument("--type", action="append", default=[], help="internship/campus/social，可多次")
+    p_preset.add_argument("--salary-min", type=float, default=0, help="薪资底线（K/月）")
+    p_preset.add_argument("--min-education", default="", help="最低学历")
+    p_preset.add_argument("--graduation-year", type=int, default=0)
+
     args = parser.parse_args(argv)
     if args.data_dir:
         config.set_data_dir(args.data_dir)
@@ -91,7 +109,8 @@ def main(argv: list[str] | None = None) -> int:
         ):
             print(
                 f"[警告] 监听 {args.host}：API 无账号体系，绑定非回环地址意味着同网段可访问你的全部求职数据。\n"
-                "       请设置 JOBHATER_ALLOWED_HOSTS=允许的主机名（逗号分隔）并配合防火墙/反代使用（见 SECURITY.md）。",
+                "       私网 IP 直连默认放行；域名部署请设置 JOBHATER_ALLOWED_HOSTS（逗号分隔）。\n"
+                "       有外层防护/反向代理时可设 JOBHATER_GUARD=0 关闭本机安全线（见 SECURITY.md）。",
                 file=sys.stderr,
             )
         uvicorn.run(create_app(), host=args.host, port=args.port, log_level="info")
@@ -318,6 +337,82 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"❌ {e}", file=sys.stderr)
                 return 2
             print(f"✅ 已推进到 {app['status']}")
+            return 0
+
+        if args.cmd == "profile":
+            from pathlib import Path
+
+            from jobhater.services.profile import ProfileService
+            from jobhater.services.resume import ResumeService
+            from jobhater.services.resume_import import parse_resume_text
+
+            ps = ProfileService(con)
+            if args.profile_cmd == "list":
+                profiles = ps.list_profiles()
+                if not profiles:
+                    print("还没有画像——job-hater profile create --name 姓名 [--resume-file 简历.txt]")
+                for p in profiles:
+                    print(
+                        f"  [{p.id}] {p.display_name} · {p.headline or '无介绍'} ·"
+                        f" 技能 {len(ps.list_skills(p.id))} ·"
+                        f" 偏好 {len(ps.list_presets(p.id))}"
+                    )
+                return 0
+            resume_text = Path(args.resume_file).read_text(encoding="utf-8") if args.resume_file else ""
+            draft, warnings = None, []
+            if resume_text.strip():
+                parsed = parse_resume_text(resume_text)
+                draft, warnings = parsed["draft"], parsed["warnings"]
+                basics = draft.get("basics") or {}
+                args.name = args.name or basics.get("name") or ""
+                args.headline = args.headline or basics.get("label") or ""
+            if not args.name.strip():
+                print("❌ 缺少姓名：--name 或简历文本中的姓名至少提供一个", file=sys.stderr)
+                return 2
+            profile = ps.create_profile(args.name.strip(), args.headline.strip() or None)
+            counts = ResumeService(con).import_json_resume(profile.id, draft) if draft else {}
+            print(f"✅ 画像已建立：{profile.id}（{profile.display_name}）")
+            if counts:
+                print(f"   简历入档：{counts}")
+            for w in warnings:
+                print(f"   ⚠️ {w}")
+            print("下一步：job-hater preset --profile <id> 设定求职偏好，然后 match")
+            return 0
+
+        if args.cmd == "preset":
+            from jobhater.services.profile import ProfileService
+
+            ps = ProfileService(con)
+            if ps.get_profile(args.profile) is None:
+                print(f"❌ 画像不存在: {args.profile}", file=sys.stderr)
+                return 2
+            bad_types = [t for t in args.type if t not in ("internship", "campus", "social")]
+            if bad_types:
+                print(f"❌ 未知类型 {bad_types}（合法值：internship/campus/social）", file=sys.stderr)
+                return 2
+            kw: dict = {}
+            if args.role:
+                kw["target_roles"] = args.role
+            if args.city:
+                kw["target_cities"] = args.city
+            if args.type:
+                kw["employment_types"] = args.type
+            if args.salary_min > 0:
+                kw["salary_min_k"] = args.salary_min
+            if args.min_education:
+                kw["min_education"] = args.min_education
+            if args.graduation_year > 0:
+                kw["graduation_year"] = args.graduation_year
+            current = ps.active_preset(args.profile)
+            if current is not None:
+                preset = ps.update_preset(current.id, **kw) if kw else current
+            else:
+                preset = ps.create_preset(args.profile, args.name, **kw)
+                ps.activate_preset(args.profile, preset.id)
+            print(
+                f"✅ 偏好「{preset.name}」已生效：角色={preset.target_roles} 城市={preset.target_cities}"
+                f" 类型={preset.employment_types} 薪资底线={preset.salary_min_k or '不限'}K"
+            )
             return 0
 
         if args.cmd == "confirm-applied":

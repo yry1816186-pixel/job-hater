@@ -1,6 +1,7 @@
 """FastAPI 应用工厂：路由见 routes.py（UI/CLI/MCP 共享同一服务层）。"""
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -64,6 +65,15 @@ def _host_allowed(host_header: str, allowed: list[str]) -> bool:
     hostname = _hostname_of(host_header)
     if not hostname:
         return False
+    # 私网/环回 IP 字面量默认放行：局域网设备用 IP 直连开箱即用。
+    # DNS rebinding 的攻击面是域名 Host（恶意域名的 Host 头是域名本身），
+    # IP 字面量不构成该威胁——域名仍须白名单。
+    try:
+        ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        ip = None
+    if ip is not None and (ip.is_private or ip.is_loopback or ip.is_link_local):
+        return True
     for pat in allowed:
         pat = pat.lower().strip("[]")
         if pat.startswith("*."):
@@ -132,11 +142,16 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Job Hater", version=__version__, lifespan=lifespan)
     from jobhater.api.routes import register_routes  # 延迟导入避免环
 
-    extra_hosts = [
-        h.strip() for h in os.environ.get("JOBHATER_ALLOWED_HOSTS", "").split(",")
-        if h.strip()
-    ]
-    app.add_middleware(_LocalOnlyMiddleware, allowed_hosts=[*_DEFAULT_HOSTS, *extra_hosts])
+    # JOBHATER_GUARD=0 一键关闭 Host/Origin 安全线（仅当有外层防护/反向代理时使用）。
+    guard = os.environ.get("JOBHATER_GUARD", "1").strip().lower() not in ("", "0", "false", "off", "no")
+    if guard:
+        extra_hosts = [
+            h.strip() for h in os.environ.get("JOBHATER_ALLOWED_HOSTS", "").split(",")
+            if h.strip()
+        ]
+        app.add_middleware(_LocalOnlyMiddleware, allowed_hosts=[*_DEFAULT_HOSTS, *extra_hosts])
+    else:
+        logger.warning("JOBHATER_GUARD=0：Host/Origin 安全线已关闭——仅当有外层防护时这样部署")
     register_routes(app)
     _mount_spa(app)
     return app

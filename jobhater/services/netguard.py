@@ -4,31 +4,45 @@
 收件箱表格），判活 Tier2 与公众号深挖会主动 GET 这些 URL——恶意输入可诱导本机
 服务访问内网（如云元数据 169.254.169.254）。本模块在发请求前解析目标 IP 并分类拒绝。
 
-已知残余：解析与请求之间的 DNS 变更（TOCTOU）可绕过 IP 分类；对本机单用户工具
-属可接受残余，文档如实声明。
+已知残余：解析与请求之间的 DNS 变更（TOCTOU，含域名决策缓存 5 分钟 TTL 窗口）
+可绕过 IP 分类；对本机单用户工具属可接受残余，文档如实声明。
 """
 from __future__ import annotations
 
 import ipaddress
 import socket
+import time
 from urllib.parse import urlsplit
+
+# 域名解析决策缓存：判活/深挖对同一域名的大量 URL 会重复 getaddrinfo
+# （且真实请求还会再解析一次），这里按主机名缓存判定输入，TTL 5 分钟。
+# 进程内 dict + GIL 下读写安全；残余面 = TTL 窗口内 DNS 变化（TOCTOU 的既知延伸）。
+_DNS_TTL = 300.0
+_dns_cache: dict[str, tuple[float, list[ipaddress.IPv4Address | ipaddress.IPv6Address]]] = {}
 
 
 def _ips_of_host(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
     try:
-        return [ipaddress.ip_address(host)]  # 字面 IP（含 IPv6）
+        return [ipaddress.ip_address(host)]  # 字面 IP（含 IPv6），本地计算零成本不缓存
     except ValueError:
         pass
+    now = time.monotonic()
+    hit = _dns_cache.get(host)
+    if hit and now - hit[0] < _DNS_TTL:
+        return hit[1]
     try:
         infos = socket.getaddrinfo(host, None)
     except OSError:
-        return []
-    out: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+        out: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+        _dns_cache[host] = (now, out)  # 解析失败同样缓存，避免慢失败反复重试
+        return out
+    out = []
     for info in infos:
         try:
             out.append(ipaddress.ip_address(info[4][0]))
         except ValueError:
             continue
+    _dns_cache[host] = (now, out)
     return out
 
 
