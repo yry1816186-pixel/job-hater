@@ -10,6 +10,9 @@ import html
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from urllib.parse import urlsplit
+
+from jobhater.services.netguard import guard_url
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 _TIMEOUT_S = 12
@@ -57,7 +60,24 @@ def extract_article(doc: str) -> tuple[str, str]:
     return t, body
 
 
+def _is_wx_article_url(u: str) -> bool:
+    """公众号文章 URL 判定：解析 netloc 精确匹配（点号边界），
+    防子串匹配被 ``http://evil.com/#mp.weixin.qq.com/s`` 类 URL 绕过。"""
+    try:
+        parts = urlsplit(u)
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower()
+    return (
+        parts.scheme in ("http", "https")
+        and (host == "mp.weixin.qq.com" or host.endswith(".mp.weixin.qq.com"))
+        and parts.path.startswith("/s")
+    )
+
+
 def _fetch_one(url: str) -> Article | None:
+    if guard_url(url):  # 双保险：collect 已过白名单，防未来调用方绕过
+        return None
     try:
         rq = _requests()
         r = rq.get(url, headers={"User-Agent": UA}, timeout=_TIMEOUT_S)
@@ -84,7 +104,7 @@ def collect_urls(hits: list[dict], *, limit: int = 2500) -> list[str]:
         am = h.get("apply_method") or ""
         if am.startswith("链接 "):
             u = am[3:].strip()
-            if "mp.weixin.qq.com/s" in u:
+            if _is_wx_article_url(u):
                 scored[u] = max(scored.get(u, 0.0), h.get("confidence", 0.0))
     ranked = sorted(scored, key=lambda u: -scored[u])
     return ranked[:limit]

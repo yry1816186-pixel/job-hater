@@ -80,10 +80,20 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "serve":
+        import os
+
         import uvicorn
 
         from jobhater.api import create_app
 
+        if args.host not in ("127.0.0.1", "localhost", "::1") and not os.environ.get(
+            "JOBHATER_ALLOWED_HOSTS"
+        ):
+            print(
+                f"[警告] 监听 {args.host}：API 无账号体系，绑定非回环地址意味着同网段可访问你的全部求职数据。\n"
+                "       请设置 JOBHATER_ALLOWED_HOSTS=允许的主机名（逗号分隔）并配合防火墙/反代使用（见 SECURITY.md）。",
+                file=sys.stderr,
+            )
         uvicorn.run(create_app(), host=args.host, port=args.port, log_level="info")
         return 0
 

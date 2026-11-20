@@ -44,6 +44,7 @@ from jobhater.services.enrich.providers import (
     _host_of,
     provider_for_url,
 )
+from jobhater.services.netguard import guard_url
 
 DEFAULT_LIMIT = 20
 _MAX_HOPS = 3  # Tier2 同域跳转限界（与 BaiduProvider 同款语义）
@@ -232,6 +233,9 @@ class LivenessService:
         host = _host_of(url)
         if not host:
             return LivenessVerdict("uncertain", code="bad_url", evidence="URL 无 host")
+        blocked = guard_url(url)  # SSRF 闸：三方输入的 URL 不得指向私网/环回/链路本地
+        if blocked:
+            return LivenessVerdict("uncertain", code="url_blocked", evidence=blocked[:160])
         current = url
         try:
             for _ in range(_MAX_HOPS):

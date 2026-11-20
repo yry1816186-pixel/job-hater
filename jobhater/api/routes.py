@@ -1,14 +1,15 @@
 """HTTP 路由：参数绑定 + 错误映射，业务规则全部在 services 层。"""
 from __future__ import annotations
 
+import logging
 import sqlite3
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from jobhater.db import connect
-from jobhater.services.ai import EGRESS_DISCLOSURES, AIService
+from jobhater.services.ai import EGRESS_DISCLOSURES, AIError, AIService
 from jobhater.services.backup import BackupService
 from jobhater.services.contacts import ContactsService
 from jobhater.services.interview_kit import InterviewKitService
@@ -367,12 +368,38 @@ class AIReviewIn(BaseModel):
     ack_egress: bool = False
 
 
+logger = logging.getLogger("jobhater")
+
+_MB = 1024 * 1024
+
+
 def _err(e: Exception) -> HTTPException:
     if isinstance(e, (KeyError, LifecycleError)):
         return HTTPException(status_code=404 if isinstance(e, KeyError) else 422, detail=str(e).strip("'\""))
     if isinstance(e, sqlite3.IntegrityError):
         return HTTPException(status_code=409, detail=f"数据冲突：{e}")
-    return HTTPException(status_code=500, detail=str(e))
+    if isinstance(e, ValueError):
+        # 服务层校验失败（备份校验/解析入参等）：用户可读，属请求侧问题
+        return HTTPException(status_code=422, detail=str(e))
+    if isinstance(e, AIError):
+        # AI 调用失败/未配置/出境未确认：用户可读的服务层语义，如实透出（不含密钥）
+        return HTTPException(status_code=502, detail=str(e))
+    # 兜底：完整堆栈进服务端日志，不把内部路径/异常文本回显给客户端
+    logger.exception("未处理的服务层异常")
+    return HTTPException(status_code=500, detail="服务器内部错误：详情见 job-hater serve 控制台日志")
+
+
+def _require_size(request: Request, max_mb: int) -> None:
+    """请求体预检：超大上传在读入内存/解析之前拒绝（Content-Length 已知时）。"""
+    cl = request.headers.get("content-length")
+    if cl is None:
+        return
+    try:
+        n = int(cl)
+    except ValueError:
+        return
+    if n > max_mb * _MB:
+        raise HTTPException(413, f"请求体过大：上限 {max_mb}MB")
 
 
 def _csv_response(header: list[str], rows: list[dict], filename: str) -> Response:
@@ -585,14 +612,17 @@ def register_routes(app: FastAPI) -> None:
     # ---------- 岗位 ----------
 
     @app.post("/api/jobs/import")
-    def import_jobs(body: JobsImportIn, con=Depends(get_con)):
+    def import_jobs(body: JobsImportIn, request: Request, con=Depends(get_con)):
+        _require_size(request, 20)
         stats = JobService(con).ingest(body.jobs, source_id=body.source_id)
         return stats.model_dump()
 
     @app.post("/api/import/paste")
-    def import_paste(body: PasteIn, con=Depends(get_con)):
+    def import_paste(body: PasteIn, request: Request, con=Depends(get_con)):
         """§7 通用入口：粘贴任意 JD 文本 → 结构化草稿（默认不落库，用户确认后保存）。"""
         from jobhater.services.sources import parse_jd_text
+
+        _require_size(request, 2)
 
         try:
             draft = parse_jd_text(body.text, url=body.url)
@@ -1096,12 +1126,15 @@ def register_routes(app: FastAPI) -> None:
     # ---------- 简历导入（冷启动主链） ----------
 
     @app.post("/api/onboarding/parse-resume")
-    async def parse_resume_file(file: UploadFile, con=Depends(get_con)):
+    async def parse_resume_file(file: UploadFile, request: Request, con=Depends(get_con)):
         """上传简历文件（pdf/docx/txt/md/json）→ 结构化草稿。不落库——
         草稿必须经用户核对编辑，再走 POST /api/profiles + import/json-resume 落库。"""
         from jobhater.services.resume_import import ResumeImportError, ResumeImportService
 
-        data = await file.read()
+        _require_size(request, 20)
+        data = await file.read(20 * _MB + 1)  # 读入即设上限，恶意大文件不进内存
+        if len(data) > 20 * _MB:
+            raise HTTPException(413, "文件过大：上限 20MB")
         try:
             return ResumeImportService(con).parse_file(file.filename or "", data)
         except ResumeImportError as e:
@@ -1490,10 +1523,13 @@ def register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/api/backup/restore")
-    async def backup_restore(file: UploadFile, con=Depends(get_con)):
+    async def backup_restore(file: UploadFile, request: Request, con=Depends(get_con)):
         from jobhater.config import db_path
 
-        data = await file.read()
+        _require_size(request, 200)
+        data = await file.read(200 * _MB + 1)
+        if len(data) > 200 * _MB:
+            raise HTTPException(413, "备份文件过大：上限 200MB")
         try:
             return BackupService(con, db_path()).restore(data)
         except ValueError as e:

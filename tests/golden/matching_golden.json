@@ -55,7 +55,7 @@
       "experiences": [
         {"employer": "某互联网", "title": "产品设计师", "tags": ["设计", "用户研究"], "description": "B端产品交互设计"}
       ],
-      "educations": [{"school": "江南大学", "degree": "本科", "major": "工业设计"}]
+      "educations": [{"school": "临江大学", "degree": "本科", "major": "工业设计"}]
     }
   },
   "preset_defaults": {

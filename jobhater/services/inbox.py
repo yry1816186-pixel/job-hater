@@ -25,6 +25,7 @@ from jobhater import config
 from jobhater.services.wechat import recruit as wx_recruit
 
 MAX_FILE_MB = 10
+MAX_FILES_PER_SCAN = 200  # 单批文件数上限：防一次性投入数千文件拖垮扫描会话
 TABLE_EXTS = {".xlsx", ".csv"}
 TEXT_EXTS = {".pdf", ".docx", ".txt", ".md", ".markdown"}
 IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
@@ -111,10 +112,30 @@ class InboxService:
         self.state = InboxState(phase="scanning", running=True, updated_at=time.time())
         try:
             inbox = self.inbox_dir()
-            files = [f for f in sorted(inbox.iterdir())
-                     if f.is_file() and f.suffix.lower() in (TABLE_EXTS | TEXT_EXTS | IMAGE_EXTS)]
-            items: list[dict] = []
+            all_files = [f for f in sorted(inbox.iterdir())
+                         if f.is_file() and f.suffix.lower() in (TABLE_EXTS | TEXT_EXTS | IMAGE_EXTS)]
+            # 大小闸：超限文件跳过并记账（留在原处，用户自行处理）；数量闸：单批上限。
             notes: list[dict] = []
+            files: list[Path] = []
+            for f in all_files:
+                try:
+                    size = f.stat().st_size
+                except OSError:
+                    size = 0
+                if size > MAX_FILE_MB * 1024 * 1024:
+                    notes.append({"file": f.name, "kind": "skipped_oversize",
+                                  "items": 0,
+                                  "error": f"超过 {MAX_FILE_MB}MB 上限，未解析（文件保留原处）"})
+                    continue
+                if len(files) >= MAX_FILES_PER_SCAN:
+                    remaining = (len(all_files) - len(files)
+                                 - sum(1 for n in notes if n["kind"] == "skipped_oversize"))
+                    notes.append({"file": "（本批达到文件数上限）", "kind": "batch_limit",
+                                  "items": 0,
+                                  "error": f"剩余 {remaining} 个文件未处理，下次扫描继续"})
+                    break
+                files.append(f)
+            items: list[dict] = []
             # 图片整体一次 OCR（worker 按目录批处理，避免逐文件起 PowerShell）
             ocr_texts = self._ocr_images(inbox)
             for f in files:

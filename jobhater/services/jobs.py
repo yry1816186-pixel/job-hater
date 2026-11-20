@@ -453,10 +453,17 @@ class JobService:
         """构造 search 与 count_filtered 共用的 WHERE 片段。返回 (join_fts, where, args)。"""
         where: list[str] = []
         args: list = []
-        join_fts = bool(query.strip())
-        if join_fts:
-            where.append("job_postings_fts MATCH ?")
-            args.append(tp.fts_query([query]))
+        join_fts = False
+        if query.strip():
+            fts_expr = tp.fts_query([query])
+            if fts_expr:
+                join_fts = True
+                where.append("job_postings_fts MATCH ?")
+                args.append(fts_expr)
+            else:
+                # 纯标点/引号查询经分词后无 token：空 MATCH 表达式是 FTS5 语法错误。
+                # 语义 = 无可检索词 → 零结果（而非静默全库返回）。
+                where.append("0")
         if statuses:
             where.append(f"p.status IN ({','.join('?' * len(statuses))})")
             args.extend(statuses)

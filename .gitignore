@@ -40,3 +40,7 @@ skills/upstream/**
 # 浏览器走查产物（本地工具）
 .playwright-mcp/
 .zcodeignore
+
+# 开发期工作流状态与杂物（绝不入库）
+.control/
+$null

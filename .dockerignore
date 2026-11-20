@@ -1,0 +1,19 @@
+# 只把构建所需内容送进 Docker 上下文（防宿主机产物污染镜像构建）
+.git
+.github
+.zcode
+.control
+.benchmarks
+.pytest_cache
+.ruff_cache
+**/__pycache__
+*.pyc
+data
+docs
+tests
+examples
+$null
+frontend/node_modules
+frontend/dist
+node_modules
+*.log

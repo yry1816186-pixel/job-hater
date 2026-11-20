@@ -25,7 +25,7 @@ WIN = os.name == "nt"
 class WeChatAccount:
     """一个已在本机登录过的微信账号（数据目录级）。"""
 
-    key: str  # 目录名，如 wxid_btxzomoll4s422_07ed
+    key: str  # 目录名，如 wxid_ab12cd34ef56
     wxid: str  # 纯 wxid 部分
     root: Path  # 账号数据目录（含 db_storage）
     message_dbs: list[Path] = field(default_factory=list)

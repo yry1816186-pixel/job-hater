@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ["3.10", "3.12"]
+        python: ["3.10", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -92,9 +92,58 @@ jobs:
         run: python -m pytest tests/test_matching_golden.py -v
 
   docker:
-    name: Docker 镜像构建
+    name: Docker 构建 + 运行冒烟（部署主路径回归）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: 构建镜像（多阶段：node 构建前端 → python 运行时）
         run: docker build -t job-hater:ci .
+      - name: compose 起服务并等待健康
+        run: docker compose up -d --wait
+      - name: 冒烟：/ 返回 SPA HTML（修复前此处是 404 JSON）+ /api/health
+        run: |
+          set -e
+          body=$(curl -fsS http://127.0.0.1:8787/)
+          echo "$body" | grep -q '<div id="root">' || { echo "根路径未返回 SPA HTML: $body"; exit 1; }
+          curl -fsS http://127.0.0.1:8787/api/health | grep -q '"ok": *true'
+      - name: 冒烟：Host 白名单拒绝非本机 Host（DNS rebinding 防线）
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example.com' http://127.0.0.1:8787/api/health)
+          [ "$code" = "400" ] || { echo "恶意 Host 未被拒绝: HTTP $code"; exit 1; }
+      - name: 清理
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  wheel-smoke:
+    name: wheel 安装冒烟（陌生人 pip install 路径）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build --wheel --outdir dist/
+      - name: 干净 venv 安装 wheel
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+      - name: 断言非 py 资源进包（迁移 SQL / OCR worker）
+        run: |
+          /tmp/smoke/bin/python -c "
+          import importlib.resources
+          pkg = importlib.resources.files('jobhater')
+          migs = list((pkg / 'db' / 'migrations').iterdir())
+          assert migs, 'migrations 未进 wheel'
+          assert (pkg / 'services' / 'wechat' / 'ocr_worker.ps1').is_file(), 'ocr_worker.ps1 未进 wheel'
+          print('package-data OK:', len(migs), '个迁移文件')
+          "
+      - name: doctor + serve 冒烟（无 dist 时引导页 200 + health）
+        run: |
+          /tmp/smoke/bin/job-hater doctor
+          /tmp/smoke/bin/job-hater serve --port 8790 &
+          SRV=$!
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8790/api/health >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8790/api/health | grep -q '"ok": *true'
+          curl -fsS http://127.0.0.1:8790/ | grep -q '前端'
+          kill $SRV

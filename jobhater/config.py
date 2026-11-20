@@ -62,8 +62,3 @@ def exports_dir() -> Path:
     d = data_dir() / "exports"
     d.mkdir(parents=True, exist_ok=True)
     return d
-
-
-def repo_root() -> Path:
-    """源码仓库根（定位打包的 migrations 等资源）。"""
-    return Path(__file__).resolve().parent.parent

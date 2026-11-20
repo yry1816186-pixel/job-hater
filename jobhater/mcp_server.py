@@ -11,11 +11,20 @@ import json
 
 # mcp 1.x 的 FastMCP 在 2.x 更名为 MCPServer（.tool/.run/instructions API 面兼容，
 # 见官方迁移指南 https://py.sdk.modelcontextprotocol.io/v2/migration）。
-# 双路 import 使本包同时支持 1.x 与 2.x 运行时。
+# 双路 import 使本包同时支持 1.x 与 2.x 运行时；完全未装时给出可行动指引。
 try:
     from mcp.server.fastmcp import FastMCP
 except ImportError:  # mcp >= 2
-    from mcp.server.mcpserver import MCPServer as FastMCP
+    try:
+        from mcp.server.mcpserver import MCPServer as FastMCP
+    except ImportError:
+        import sys
+
+        print(
+            "未安装 mcp SDK：请先 pip install 'jobhater[mcp]'，再运行 job-hater-mcp。",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
 
 from jobhater.db import apply_all, connect
 from jobhater.services.jobs import JobService

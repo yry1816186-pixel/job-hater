@@ -642,7 +642,7 @@ def test_recruit_group_name_not_company():
     """群名（含「群」字）不得当公司名；真实企业发送者兜底仍可用。"""
     from jobhater.services.wechat.recruit import extract_company
 
-    c1, _ = extract_company("急招数据分析师，坐标北京，薪资15-25K", sender_name="艺术学院2023级脆皮本科生群")
+    c1, _ = extract_company("急招数据分析师，坐标北京，薪资15-25K", sender_name="某某学院2023级求职互助群")
     assert c1 is None, f"群名不得成为公司，得 {c1}"
     c2, _ = extract_company("急招数据分析师，坐标北京", sender_name="长城证券招聘")
     assert c2 == "长城证券"

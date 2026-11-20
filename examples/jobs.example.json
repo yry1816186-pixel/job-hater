@@ -1,0 +1,32 @@
+[
+  {
+    "title": "后端开发工程师（2027届校招）",
+    "company": "示例科技",
+    "city": "杭州",
+    "salary": "25K-40K·16薪",
+    "education": "本科",
+    "experience": "应届",
+    "url": "https://careers.example.com/jobs/1001",
+    "description": "【岗位职责】负责核心系统的服务端设计与开发。【任职要求】计算机相关专业本科及以上，熟悉 Java 或 Golang。"
+  },
+  {
+    "title": "新媒体运营（校招）",
+    "company": "示例文旅集团",
+    "city": "成都",
+    "salary": "8K-13K",
+    "education": "本科",
+    "experience": "应届",
+    "url": "https://careers.example.com/jobs/1002",
+    "description": "【岗位职责】负责景区文旅 IP 的短视频账号运营与内容排期。【任职要求】专业不限，熟悉抖音/小红书玩法。"
+  },
+  {
+    "title": "机械工艺工程师",
+    "company": "示例精密装备",
+    "city": "西安",
+    "salary": "9K-14K",
+    "education": "本科",
+    "experience": "1-3年",
+    "url": "https://careers.example.com/jobs/1003",
+    "description": "【岗位职责】精密零件加工工艺编制与现场调试。【任职要求】机械类专业，会用 SolidWorks/AutoCAD。"
+  }
+]

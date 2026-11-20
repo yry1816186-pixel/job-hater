@@ -265,9 +265,16 @@ class AIService:
         if not HAVE_KEYRING:
             raise AIError(
                 "当前环境缺少 keyring 库，无法安全保存 API Key。"
-                "请 pip install jobhater[ai] 后重试；我们不会把 key 存入数据库或明文文件。"
+                "请检查安装完整性后重试；我们不会把 key 存入数据库或明文文件。"
             )
-        keyring.set_password(row["api_key_ref"], "api_key", api_key)
+        try:
+            keyring.set_password(row["api_key_ref"], "api_key", api_key)
+        except Exception as e:  # 无钥匙串后端（常见于无桌面 Linux）等：如实降级，不落明文
+            raise AIError(
+                f"系统钥匙串不可用（{type(e).__name__}；常见于无桌面环境的 Linux，"
+                "请先安装并解锁钥匙串服务，如 gnome-keyring + dbus）。"
+                "API Key 不会存入数据库或明文文件。"
+            ) from e
 
     # ---- 实例化 ----
 

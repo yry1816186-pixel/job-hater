@@ -272,14 +272,14 @@ def test_api_profile_patch_and_delete_children(client):
 
 def test_demo_seed_clear_roundtrip(client):
     s1 = client.post("/api/demo/seed").json()
-    assert s1["added"] == 10, s1
-    assert client.get("/api/demo/status").json()["demo_jobs"] == 10
+    assert s1["added"] == 13, s1
+    assert client.get("/api/demo/status").json()["demo_jobs"] == 13
     # 幂等：再种一遍全部去重
     s2 = client.post("/api/demo/seed").json()
-    assert s2["added"] == 0 and s2["deduped"] == 10
+    assert s2["added"] == 0 and s2["deduped"] == 13
     # 清除 → 干净
     c1 = client.post("/api/demo/clear").json()
-    assert c1 == {"deleted": 10, "kept": 0}
+    assert c1 == {"deleted": 13, "kept": 0}
     assert client.get("/api/demo/status").json()["demo_jobs"] == 0
 
 
@@ -291,7 +291,7 @@ def test_demo_clear_keeps_applied_jobs(client):
     app_id = client.post("/api/applications",
                          json={"job_id": demo_job["id"], "profile_id": pid}).json()["id"]
     r = client.post("/api/demo/clear").json()
-    assert r["deleted"] == 9 and r["kept"] == 1
+    assert r["deleted"] == 12 and r["kept"] == 1
     # RESTRICT 边界：被投递引用的岗位仍在
     assert client.get(f"/api/jobs/{demo_job['id']}").status_code == 200
     assert client.get(f"/api/applications/{app_id}").json()["job_id"] == demo_job["id"]

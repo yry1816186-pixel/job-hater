@@ -155,7 +155,10 @@ def _raw_candidates(data: bytes) -> Iterator[bytes]:
     """逐字节滑窗熵预筛（≥22 个不同字节值）后的原始 32 字节候选。"""
     if len(data) < 32:
         return
-    import numpy as np  # noqa: PLC0415（可选依赖: 缺失时 raw 扫描降级为 hex-only）
+    try:
+        import numpy as np  # noqa: PLC0415（可选依赖: 缺失时 raw 扫描降级为 hex-only）
+    except ImportError:
+        return  # numpy 缺失：熵筛通道降级为不可用（hex/结构布局候选不受影响）
 
     arr = np.frombuffer(data, dtype=np.uint8)
     n = len(arr) - 31

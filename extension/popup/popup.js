@@ -6,6 +6,35 @@ let apiBase = "http://127.0.0.1:8787"
 let profiles = []
 let activeProfileId = null
 
+// 安全基线：本扩展只与回环地址上的本机服务通信（防 apiBase 被改成远端后泄漏画像字段）
+function normalizeApiBase(raw) {
+  let u
+  try {
+    u = new URL(raw)
+  } catch {
+    return null
+  }
+  const host = u.hostname.replace(/^\[|\]$/g, "")
+  if (u.protocol !== "http:" || !["127.0.0.1", "localhost", "::1"].includes(host)) {
+    return null
+  }
+  return u.origin
+}
+
+// DOM 构建助手：所有动态文本一律经 Text 节点（不进 innerHTML，被访页面文本无注入面）
+function h(tag, props = {}, ...children) {
+  const n = document.createElement(tag)
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v)
+    else n.setAttribute(k, v)
+  }
+  for (const c of children.flat()) {
+    n.append(c?.nodeType ? c : document.createTextNode(String(c ?? "")))
+  }
+  return n
+}
+
 async function api(path, init) {
   const resp = await fetch(`${apiBase}/api${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -45,7 +74,7 @@ async function setStatus(ok, text) {
 async function loadProfiles() {
   profiles = await api("/profiles")
   const sel = $("profileSel")
-  sel.innerHTML = ""
+  sel.replaceChildren()
   for (const p of profiles) {
     const o = document.createElement("option")
     o.value = p.id
@@ -60,7 +89,7 @@ async function loadProfiles() {
 async function boot() {
   $("ver").textContent = "v" + chrome.runtime.getManifest().version
   const saved = await chrome.storage.local.get(["apiBase"])
-  apiBase = saved.apiBase || "http://127.0.0.1:8787"
+  apiBase = normalizeApiBase(saved.apiBase || "http://127.0.0.1:8787") || "http://127.0.0.1:8787"
   $("apiBase").value = apiBase
   try {
     await api("/health")
@@ -72,7 +101,12 @@ async function boot() {
 }
 
 $("apiBase").addEventListener("change", async () => {
-  apiBase = $("apiBase").value.replace(/\/$/, "")
+  const norm = normalizeApiBase($("apiBase").value.trim())
+  if (!norm) {
+    await setStatus(false, "地址必须是回环主机（127.0.0.1 / localhost / [::1]）上的 http 地址——本扩展只连本机服务。")
+    return
+  }
+  apiBase = norm
   await chrome.storage.local.set({ apiBase })
   await boot()
 })
@@ -84,18 +118,20 @@ $("profileSel").addEventListener("change", async () => {
 /* ---------- JD 抓取 → 草稿（可编辑）→ 入库 ---------- */
 
 $("capture").addEventListener("click", async () => {
-  $("draftArea").innerHTML = '<div class="muted">抓取中…</div>'
+  $("draftArea").replaceChildren(h("div", { class: "muted" }, "抓取中…"))
   try {
     const jd = await inject("CAPTURE_JD")
-    $("draftArea").innerHTML = `
-      <div class="draft">
-        <input id="dTitle" placeholder="岗位标题" />
-        <input id="dCompany" placeholder="公司" />
-        <input id="dCity" placeholder="城市（可空）" />
-        <button id="dSave" class="primary">存入岗位库（先出草稿可再改）</button>
-        <div class="muted" id="dMeta" style="margin-top:4px">正文 ${jd.text.length} 字 · 来自 ${jd.url.slice(0, 60)}</div>
-        <div class="ok-box" id="dMsg"></div>
-      </div>`
+    $("draftArea").replaceChildren(
+      h("div", { class: "draft" },
+        h("input", { id: "dTitle", placeholder: "岗位标题" }),
+        h("input", { id: "dCompany", placeholder: "公司" }),
+        h("input", { id: "dCity", placeholder: "城市（可空）" }),
+        h("button", { id: "dSave", class: "primary" }, "存入岗位库（先出草稿可再改）"),
+        h("div", { class: "muted", id: "dMeta", style: "margin-top:4px" },
+          `正文 ${jd.text.length} 字 · 来自 ${jd.url.slice(0, 60)}`),
+        h("div", { class: "ok-box", id: "dMsg" }),
+      ),
+    )
     $("dTitle").value = jd.title || ""
     $("dCompany").value = jd.company || ""
     $("dSave").addEventListener("click", async () => {
@@ -131,14 +167,14 @@ $("capture").addEventListener("click", async () => {
       }
     })
   } catch (e) {
-    $("draftArea").innerHTML = `<div class="err-box">抓取失败：${e.message}</div>`
+    $("draftArea").replaceChildren(h("div", { class: "err-box" }, `抓取失败：${e.message}`))
   }
 })
 
 /* ---------- 表单填充（只填不提交） ---------- */
 
 $("fill").addEventListener("click", async () => {
-  $("fillReport").innerHTML = '<div class="muted">扫描表单中…</div>'
+  $("fillReport").replaceChildren(h("div", { class: "muted" }, "扫描表单中…"))
   try {
     const pid = activeProfileId || profiles[0]?.id
     // GET /profiles/{id} 返回完整画像视图（profile + 各分节）
@@ -158,17 +194,23 @@ $("fill").addEventListener("click", async () => {
       summary: p.summary ?? "",
     }
     const report = await inject("FILL_FORM", { profile })
-    const li = (x) => `<li>${x.label || x.field || ""}${x.reason ? " · " + x.reason : ""}</li>`
-    $("fillReport").innerHTML = `
-      <div class="fill-report">
-        扫描 ${report.scanned} 个字段：填充 <b>${report.filled.length}</b> 个（橙框高亮，请逐一核对），
-        跳过 ${report.skipped.length} 个。
-        ${report.filled.length ? `<details><summary>已填充</summary><ul>${report.filled.map(li).join("")}</ul></details>` : ""}
-        ${report.skipped.length ? `<details><summary>跳过</summary><ul>${report.skipped.map(li).join("")}</ul></details>` : ""}
-        <p class="muted" style="margin-top:6px">提交前请人工核对全部字段——本扩展永不代你提交。</p>
-      </div>`
+    const li = (x) => h("li", null, x.label || x.field || "", x.reason ? " · " + x.reason : "")
+    $("fillReport").replaceChildren(
+      h("div", { class: "fill-report" },
+        `扫描 ${report.scanned} 个字段：填充 `,
+        h("b", null, String(report.filled.length)),
+        ` 个（橙框高亮，请逐一核对），跳过 ${report.skipped.length} 个。`,
+        report.filled.length
+          ? h("details", null, h("summary", null, "已填充"), h("ul", null, report.filled.map(li)))
+          : "",
+        report.skipped.length
+          ? h("details", null, h("summary", null, "跳过"), h("ul", null, report.skipped.map(li)))
+          : "",
+        h("p", { class: "muted", style: "margin-top:6px" }, "提交前请人工核对全部字段——本扩展永不代你提交。"),
+      ),
+    )
   } catch (e) {
-    $("fillReport").innerHTML = `<div class="err-box">填充失败：${e.message}</div>`
+    $("fillReport").replaceChildren(h("div", { class: "err-box" }, `填充失败：${e.message}`))
   }
 })
 
