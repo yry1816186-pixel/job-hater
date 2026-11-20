@@ -485,7 +485,7 @@ export default function OnboardingPage() {
           </div>
           <label className="check-row">
             <input type="checkbox" checked={seedDemo} onChange={(e) => setSeedDemo(e.target.checked)} />
-            顺便导入 8 条示例岗位（虚构雇主，可一键清除）——先看看匹配分和 ATS 报告长什么样
+            顺便导入 10 条示例岗位（虚构雇主，可一键清除）——先看看匹配分和 ATS 报告长什么样
           </label>
           <div className="row" style={{ marginTop: 14 }}>
             <button className="btn primary" onClick={() => finish(false)} disabled={busy}>
