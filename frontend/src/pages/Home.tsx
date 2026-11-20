@@ -212,7 +212,7 @@ export default function Home() {
           <div className="row" style={{ flexWrap: 'wrap' }}>
             <Link className="btn primary" to="/welcome">上传简历，开始建档 →</Link>
             <Link className="btn" to="/profile">手动建档</Link>
-            <button className="btn" onClick={seedDemo}>先看看示例（导入 10 条演示岗位）</button>
+            <button className="btn" onClick={seedDemo}>先看看示例（导入 13 条演示岗位）</button>
           </div>
           <p className="hint" style={{ marginTop: 12 }}>
             本系统不会代替你投递，不会上传你的数据，AI 功能默认关闭。

@@ -32,6 +32,9 @@ dependencies = [
     "pydantic>=2.6",
     "httpx>=0.27",
     "keyring>=24",
+    # FastAPI 注册 UploadFile/Form 路由的硬前置（简历上传/备份恢复是核心功能；
+    # 此前靠 [mcp] extra 传递带入，裸 pip install 会启动即崩——Docker LIVE 实测）
+    "python-multipart>=0.0.9",
     # 中文词级分词：FTS5 检索质量的默认依赖（缺失时仍自动退回字符 bigram，功能不缺失）
     "jieba>=0.42",
     # 简历导入冷启动链：读取用户上传的 PDF（文本层）/DOCX 简历

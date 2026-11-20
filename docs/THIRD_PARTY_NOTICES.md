@@ -8,6 +8,7 @@
 | Uvicorn | ASGI 服务器 | BSD-3 |
 | httpx | AI Provider HTTP 客户端 | BSD-3 |
 | keyring | 操作系统钥匙串访问 | MIT |
+| python-multipart | 简历上传/备份恢复的 multipart 表单解析（FastAPI UploadFile 硬前置） | Apache-2.0 |
 | jieba | 中文分词（FTS 检索增强；已列为主依赖，缺失时退回字符 bigram） | MIT |
 | python-docx（可选 `[docx]`） | 简历 DOCX 导出 | MIT |
 | Playwright（可选 `[pdf]`） | 简历 PDF 导出（无头浏览器打印） | Apache-2.0 |

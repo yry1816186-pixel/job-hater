@@ -4,6 +4,77 @@
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-11-21
+
+可部署性硬化批次：目标是「陌生人克隆仓库 → 按README部署 → 打开就能用」。
+三路审计（部署面/跨平台残留/安全）修复 + 陌生人视角端到端验证。
+
+### Fixed（部署断点，全部实测复现后修复）
+- **Docker 部署 UI 永远 404**：前端 dist 拷贝位置与后端查找逻辑错位
+  （`app.py` 按 pip 安装布局解析，dist 在 `/app/frontend/dist`）。
+  重构为 `JOBHATER_DIST` env → 仓库布局双候选解析；Dockerfile 用
+  `ENV JOBHATER_DIST=/opt/jobhater/dist`；未构建前端时 `/` 返回 200
+  引导页 + WARNING（不再静默 404）；
+- **裸 `pip install .` 启动即崩**：`python-multipart` 缺失（FastAPI 注册
+  UploadFile 路由的硬前置；此前靠 `[mcp]` extra 传递带入，Docker LIVE
+  实测容器崩溃重启循环）——补进核心依赖；
+- **pip 安装用户 OCR 静默归零**：`ocr_worker.ps1` 未进 package-data，
+  补 `services/wechat/*.ps1`；
+- **README 三处失实**：Node ≥ 18 → ≥ 20（vite 8 实际要求）；
+  `jobs.json` 示例不存在 → 附 `examples/jobs.example.json`；
+  注明 CLI `match` 前需先经 Web 向导/API 建画像；`job-hater-mcp` 标注
+  需 `[mcp]` extra；
+- 新增 `.dockerignore`（防宿主 `frontend/node_modules` 毒死容器构建）；
+  Dockerfile/compose 加 HEALTHCHECK（`/api/health`）；
+- 版本漂移：`app.py` 硬编码 `3.1.0` → `jobhater.__version__`。
+
+### Added（安全与健壮性）
+- **本机 API 双白名单中间件**（`_LocalOnlyMiddleware`）：
+  - Host 白名单封 **DNS rebinding**（恶意域名指向 127.0.0.1 后同源拉
+    `/api/backup/download` 全库 PII）→ 400；
+  - Origin 白名单封**跨源简单请求写**（网页偷触发 demo/seed、inbox/scan
+    等无预检端点）→ 403；放行浏览器扩展（chrome/moz-extension）、本机
+    任意端口（vite 开发代理）与同源部署；
+  - 局域网部署经 `JOBHATER_ALLOWED_HOSTS` 显式放开；`serve --host 0.0.0.0`
+    未配置时启动即警告；
+- **SSRF 闸**（`services/netguard.py`）：判活 Tier2/公众号深挖的出站 URL
+  （三方输入来源）解析 IP 分类，私网/环回/链路本地/云元数据（169.254.169.254）
+  与非 http(s) 协议拒绝且不发请求；公众号白名单从子串匹配改 netloc
+  点号边界精确匹配（防 `http://evil.com/#mp.weixin.qq.com/s` 绕过）；
+- **请求体/上传限额**：粘贴 2MB、岗位导入与简历上传 20MB、备份恢复 200MB
+  （Content-Length 预检 + 读入上限，读入内存前 413）；收件箱启用 10MB/
+  200 文件闸（超限跳过记账、文件留原处）；
+- **错误回显收敛**：`_err` 500 兜底改固定文案 + 服务端 `logger.exception`
+  （不再回显内部路径）；AIError→502、ValueError→422 语义映射；
+- 扩展 popup：全部 `innerHTML` 动态拼接改 DOM 构建（页面文本无注入面）；
+  apiBase 强制回环校验；
+- 纯标点搜索词经分词后 FTS 空 MATCH 语法错误 500 → 零结果；
+  keyring 无后端（无桌面 Linux）→ 中文 AIError（fail-closed）；
+  `keyring_scan` numpy 导入守卫；`job-hater-mcp` 未装 SDK 给可行动指引；
+- **CI 升级**：docker job 从只 build 改 build+compose up --wait+UI HTML
+  断言+恶意 Host 断言；新增 wheel-smoke job（build→干净 venv 安装→doctor/
+  serve 冒烟+package-data 断言）；backend 矩阵补 Python 3.13；
+- demo 示例岗 10→13 条（补 UI 设计师/行政专员/制造工艺工程师——全国各
+  方向用户打开就有对口示例）；README 新增**平台能力矩阵**；
+- 测试 22 例（tests/test_deployability.py）：双白名单/前缀伪装绕过/
+  限额/dist 解析/引导页/SSRF 判活不发请求/公众号白名单/纯标点搜索/
+  打包资源/收件箱超限。
+
+### Changed（卫生清零）
+- `git rm $null .control/`（PowerShell 重定向笔误产物与开发期状态文件）；
+  `.gitignore` 防回；删 `config.repo_root()` 死代码；微信 detect 注释
+  真实 wxid 改中性；测试夹具与黄金集校名中性化（江南大学→临江大学等）。
+
+### LIVE 验收（2026-11-21，陌生人视角）
+- **wheel 陌生人模拟**：git archive 干净副本 → 离线 build wheel → 新 venv
+  安装 → `doctor`/`serve` 全通：health 3.6.0、引导页 200、恶意 Host 400、
+  跨源写 403、迁移 7 个与 ps1 均在包内；
+- **Docker LIVE**：`docker compose up --build -d` → healthy → `/` 返回 SPA
+  HTML（修复前此处为 `{"detail":"Not Found"}`）；
+- **浏览器向导冒烟（容器内）**：文科运营方向新用户全流程走通——粘贴简历
+  文本→解析（教育/技能如实提示补充）→人工补全→建档→定方向（示例岗 13 条
+  自动入库）→匹配页出分且方向一致（新媒体运营岗 59.4 居首）。
+
 ## [3.5.0] - 2026-11-20
 
 发现层全网化批次：文件收件箱（表格/文档/截图→过目入库）+ QQ 数据面能力层 +
