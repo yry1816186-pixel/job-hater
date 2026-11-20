@@ -21,6 +21,17 @@ from jobhater.services.enrich.providers import (
     WechatArticleProvider,
     ZhiyeProvider,
 )
+from jobhater.services.enrich.providers_ats import (
+    AshbyProvider,
+    GreenhouseProvider,
+    LeverProvider,
+    WorkdayProvider,
+)
+from jobhater.services.enrich.providers_cn import (
+    AlibabaProvider,
+    MeituanProvider,
+    TencentProvider,
+)
 
 FIX = Path(__file__).parent / "fixtures" / "enrich"
 
@@ -45,6 +56,27 @@ def mock_transport(**overrides):
             return httpx.Response(200, json=json.loads(_fixture("mihoyo.json")))
         if "talent.baidu.com" in url:
             return httpx.Response(200, text=_fixture("baidu.html"))
+        # ---- B2 新 provider（career-ops 移植）----
+        if "/position/detail" in url:  # 阿里详情（注意先于美团 getJobDetail 判定无重叠）
+            return httpx.Response(200, json=json.loads(_fixture("alibaba.json")))
+        if "/position/search" in url:  # 阿里搜索反查
+            return httpx.Response(200, json=json.loads(_fixture("alibaba_search.json")))
+        if "post/ByPostId" in url:  # 腾讯单岗
+            return httpx.Response(200, json=json.loads(_fixture("tencent.json")))
+        if "post/Query" in url:  # 腾讯搜索反查
+            return httpx.Response(200, json=json.loads(_fixture("tencent_query.json")))
+        if "getJobDetail" in url:  # 美团单岗
+            return httpx.Response(200, json=json.loads(_fixture("meituan.json")))
+        if "official/job/getJobList" in url:  # 美团列表（必须先于网易的泛 getJobList 路由）
+            return httpx.Response(200, json=json.loads(_fixture("meituan_list.json")))
+        if "boards-api.greenhouse.io" in url:
+            return httpx.Response(200, json=json.loads(_fixture("greenhouse.json")))
+        if "lever.co/v0/postings" in url:
+            return httpx.Response(200, json=json.loads(_fixture("lever.json")))
+        if "posting-api/job-board" in url:
+            return httpx.Response(200, json=json.loads(_fixture("ashby.json")))
+        if "wday/cxs" in url:
+            return httpx.Response(200, json=json.loads(_fixture("workday.json")))
         if "getJobList" in url:
             return httpx.Response(200, json=json.loads(_fixture("netease163.json")))
         return httpx.Response(404, text="no fixture route")
@@ -115,6 +147,82 @@ class TestParse:
     def test_wechat_host(self):
         assert WechatArticleProvider().parse("https://mp.weixin.qq.com/s/abc123")
         assert WechatArticleProvider().parse("https://mp.weixin.qq.com.evil.io/s/abc") is None
+
+    # ---- B2 新 provider：URL 形态识别（career-ops 移植） ----
+
+    def test_alibaba_detail_and_search_modes(self):
+        p = AlibabaProvider()
+        # LIVE 发现（2026-11-20）：存量 989 条在 campus 子域，channel 必须分流
+        # （campus ID 走 group_official_site 会拿到 content=null 假死）
+        ref = p.parse("https://talent.alibaba.com/off-campus/position-detail?positionId=12345678")
+        assert ref and ref.job_key == "12345678"
+        assert ref.origin == "https://talent.alibaba.com"
+        assert ref.extra["channel"] == "group_official_site"
+        cref = p.parse("https://campus-talent.alibaba.com/campus/position/detail?positionId=199907740040")
+        assert cref and cref.origin == "https://campus-talent.alibaba.com"
+        assert cref.extra["channel"] == "campus_official_site"
+        # 列表/落地页 → 搜索反查模式（163 模式推广：URL 无 ID 时标题驱动）
+        sref = p.parse("https://talent.alibaba.com/off-campus/position-list?keywords=%E8%AE%BE%E8%AE%A1")
+        assert sref and sref.extra.get("mode") == "search"
+        # 详情形 URL 但 ID 非数字（脏数据）→ 也走搜索反查（标题兜底比丢弃更可用）
+        dirty = p.parse("https://talent.alibaba.com/position-detail?positionId=abc")
+        assert dirty and dirty.extra.get("mode") == "search"
+        assert p.parse("https://talent.alibaba.com.evil.io/off-campus/position-detail?positionId=1") is None
+
+    def test_tencent_detail_and_search_modes(self):
+        p = TencentProvider()
+        ref = p.parse("https://careers.tencent.com/jobdesc.html?postId=1234567890")
+        assert ref and ref.job_key == "1234567890"
+        assert p.parse("https://careers.tencent.com/careers.html").extra.get("mode") == "search"
+        # join.qq.com = 腾讯投递站（真实库 634 条 resume.html?k=令牌 存量）→ 搜索反查
+        join = p.parse("https://join.qq.com/resume.html?k=ykYyrMbYqDCz")
+        assert join and join.extra.get("mode") == "search" and join.origin.endswith("careers.tencent.com")
+        assert p.parse("https://join.qq.com.evil.io/resume.html?k=x") is None
+        assert p.parse("https://evil.io/jobdesc.html?postId=1") is None
+
+    def test_meituan_detail_and_search_modes(self):
+        p = MeituanProvider()
+        ref = p.parse("https://zhaopin.meituan.com/web/position/detail?jobUnionId=1000234")
+        assert ref and ref.job_key == "1000234"
+        assert p.parse("https://zhaopin.meituan.com/web/position/list").extra.get("mode") == "search"
+
+    def test_greenhouse_forms(self):
+        p = GreenhouseProvider()
+        ref = p.parse("https://job-boards.greenhouse.io/stripe/jobs/1234567")
+        assert ref and ref.job_key == "1234567" and ref.extra["board"] == "stripe"
+        assert GreenhouseProvider().parse("https://boards.eu.greenhouse.io/acme/jobs/42")
+        assert p.parse("https://greenhouse.io.evil.io/stripe/jobs/1") is None
+        assert p.parse("https://job-boards.greenhouse.io/stripe/jobs/abc") is None
+
+    def test_lever_forms(self):
+        p = LeverProvider()
+        ref = p.parse("https://jobs.lever.co/acme/1f2e3d4c-5b6a-7890-abcd-ef1234567890")
+        assert ref and ref.extra["slug"] == "acme" and ref.origin.endswith("api.lever.co")
+        assert LeverProvider().parse("https://jobs.eu.lever.co/acme/1f2e3d4c-5b6a-7890-abcd-ef1234567890")
+        assert p.parse("https://jobs.lever.co/acme/1f2e3d4c/apply") is None  # 尾段多余路径不认
+        assert p.parse("https://lever.co.evil.io/acme/1f2e3d4c-5b6a-7890-abcd-ef1234567890") is None
+
+    def test_ashby_forms(self):
+        p = AshbyProvider()
+        ref = p.parse("https://jobs.ashbyhq.com/linear/8b9a2c1d-3e4f-5a6b-7c8d-9e0f1a2b3c4d")
+        assert ref and ref.extra["org"] == "linear"
+        assert p.parse("https://www.ashbyhq.com/linear/8b9a2c1d") is None  # host 必须精确到 jobs 子域
+        assert p.parse("https://jobs.ashbyhq.com/linear/../evil/1") is None  # 路径穿越拒绝
+
+    def test_workday_forms(self):
+        p = WorkdayProvider()
+        # careers 形态（含 locale 前缀）
+        ref = p.parse("https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/Program-Manager_R12345")
+        assert ref and ref.extra["tenant"] == "nvidia" and ref.extra["site"] == "NVIDIAExternalCareerSite"
+        assert ref.job_key == "/job/US-CA-Santa-Clara/Program-Manager_R12345"
+        # CXS API 形态（API URL 被存成 canonical 的罕见情形）
+        cxs = p.parse("https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/Program-Manager_R12345")
+        assert cxs and cxs.job_key.endswith("Program-Manager_R12345")
+        # myworkdaysite 形态
+        site = p.parse("https://acme.myworkdaysite.com/acme/recruiting/acme/ACME/job/Shanghai/Designer_R99")
+        assert site and site.origin == "https://acme.myworkdaysite.com"
+        assert p.parse("https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/../../../evil") is None
+        assert p.parse("https://nvidia.wd5.myworkdayjobs.com/other/path") is None
 
 
 # ---------- 单 provider fetch 回放 ----------
@@ -245,6 +353,126 @@ class TestFetch:
         res = p.fetch(ref, "", None)
         assert res.ok and "AI 产品实习生" in res.jd_text
 
+    # ---- B2 新 provider fetch 回放（fixture 按 career-ops 文档化响应形态构造） ----
+
+    def test_alibaba_detail_and_dead(self):
+        p = AlibabaProvider()
+        ref = p.parse("https://talent.alibaba.com/off-campus/position-detail?positionId=12345678")
+        with httpx.Client(transport=mock_transport()) as c:
+            res = p.fetch(ref, "", c)
+        assert res.ok and "淘天集团" in res.jd_text and res.api_title == "用户体验设计师-淘天集团"
+        # success=true + content=null = 官方确定性下线（career-ops 实测语义）
+        t = mock_transport(**{"/position/detail": lambda r: httpx.Response(
+            200, json={"success": True, "content": None}
+        )})
+        with httpx.Client(transport=t) as c:
+            dead = p.fetch(ref, "", c)
+        assert not dead.ok and "岗位已下线" in dead.error
+
+    def test_alibaba_search_fallback_exact_fuzzy_guard(self):
+        """列表 URL 搜索反查：exact 命中；fuzzy 过闸；短标题拒绝（163 同构防线）。"""
+        p = AlibabaProvider()
+        ref = p.parse("https://talent.alibaba.com/off-campus/position-list?keywords=design")
+        with httpx.Client(transport=mock_transport()) as c:
+            exact = p.fetch(ref, "用户体验设计师-淘天集团", c)
+            fuzzy = p.fetch(ref, "用户体验设计师", c)
+            short = p.fetch(ref, "设计师", c)
+            miss = p.fetch(ref, "完全不相关岗位", c)
+        assert exact.ok and exact.match_mode == "exact" and exact.api_title
+        assert fuzzy.ok and fuzzy.match_mode == "fuzzy"
+        assert not short.ok and short.error == "no_match"
+        assert not miss.ok and miss.error == "no_match"
+        # LIVE 发现（2026-11-20）：campus 域空结果 datas=null + 分页键在场 →
+        # 合法空结果（no_match），不是结构故障（failed）
+        t_null = mock_transport(**{"/position/search": lambda r: httpx.Response(
+            200, json={"success": True, "content": {"totalCount": 0, "currentPage": 1, "pageSize": 100, "datas": None}}
+        )})
+        with httpx.Client(transport=t_null) as c:
+            empty = p.fetch(ref, "任何标题", c)
+        assert not empty.ok and empty.error == "no_match"
+
+    def test_tencent_detail_e1005_and_search(self):
+        p = TencentProvider()
+        ref = p.parse("https://careers.tencent.com/jobdesc.html?postId=1234567890")
+        with httpx.Client(transport=mock_transport()) as c:
+            res = p.fetch(ref, "", c)
+        assert res.ok and "腾讯新闻" in res.jd_text and res.api_title and "CDG" in res.api_title
+        # Code=500 + Data=E1005 = 官方下线码
+        t = mock_transport(**{"post/ByPostId": lambda r: httpx.Response(
+            200, json={"Code": 500, "Data": "E1005"}
+        )})
+        with httpx.Client(transport=t) as c:
+            dead = p.fetch(ref, "", c)
+        assert not dead.ok and "E1005" in dead.error
+        # 列表 URL 搜索反查
+        sref = p.parse("https://careers.tencent.com/careers.html")
+        with httpx.Client(transport=mock_transport()) as c:
+            s = p.fetch(sref, "27586-视觉设计师（CDG）", c)
+        assert s.ok and s.match_mode == "exact"
+
+    def test_meituan_detail_status001_and_search(self):
+        p = MeituanProvider()
+        ref = p.parse("https://zhaopin.meituan.com/web/position/detail?jobUnionId=1000234")
+        with httpx.Client(transport=mock_transport()) as c:
+            res = p.fetch(ref, "", c)
+        assert res.ok and "美团优选" in res.jd_text and res.api_title == "视觉设计师"
+        # jobStatus=001 = 官方下线码
+        t = mock_transport(**{"getJobDetail": lambda r: httpx.Response(
+            200, json={"status": 1, "data": {"jobUnionId": "1000234", "name": "x", "jobStatus": "001"}}
+        )})
+        with httpx.Client(transport=t) as c:
+            dead = p.fetch(ref, "", c)
+        assert not dead.ok and "jobStatus=001" in dead.error
+        sref = p.parse("https://zhaopin.meituan.com/web/position/list")
+        with httpx.Client(transport=mock_transport()) as c:
+            s = p.fetch(sref, "视觉设计师", c)
+        assert s.ok and s.match_mode == "exact"
+
+    def test_greenhouse_double_encoded_content(self):
+        """Greenhouse content 是实体转义的 HTML——两遍解码后必须无残留标签。"""
+        p = GreenhouseProvider()
+        ref = p.parse("https://job-boards.greenhouse.io/stripe/jobs/1234567")
+        with httpx.Client(transport=mock_transport()) as c:
+            res = p.fetch(ref, "", c)
+        assert res.ok and res.api_title == "Product Designer, Payments"
+        assert "<" not in res.jd_text and "&lt;" not in res.jd_text
+        assert "Payments design team" in res.jd_text and "payment onboarding" in res.jd_text
+
+    def test_lever_roundtrip_composition(self):
+        p = LeverProvider()
+        ref = p.parse("https://jobs.lever.co/acme/1f2e3d4c-5b6a-7890-abcd-ef1234567890")
+        with httpx.Client(transport=mock_transport()) as c:
+            res = p.fetch(ref, "", c)
+        assert res.ok and res.api_title == "Product Designer (China)"
+        # descriptionPlain + lists 段落拼接
+        assert "China market surfaces" in res.jd_text and "Requirements" in res.jd_text
+        assert "Figma and design systems" in res.jd_text
+
+    def test_ashby_board_lookup_case_insensitive(self):
+        p = AshbyProvider()
+        # URL 里 id 大小写与 board 响应不同 → 大小写不敏感比对（career-ops 同判）
+        ref = p.parse("https://jobs.ashbyhq.com/linear/8B9A2C1D-3E4F-5A6B-7C8D-9E0F1A2B3C4D")
+        with httpx.Client(transport=mock_transport()) as c:
+            res = p.fetch(ref, "", c)
+        assert res.ok and res.api_title == "Senior Product Designer"
+        assert "China-facing surfaces" in res.jd_text
+        miss_ref = p.parse("https://jobs.ashbyhq.com/linear/deadbeef-0000-0000-0000-000000000000")
+        with httpx.Client(transport=mock_transport()) as c:
+            miss = p.fetch(miss_ref, "", c)
+        assert not miss.ok and miss.error == "no_match"
+
+    def test_workday_html_description(self):
+        p = WorkdayProvider()
+        ref = p.parse(
+            "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/"
+            "US-CA-Santa-Clara/Program-Manager_R12345"
+        )
+        with httpx.Client(transport=mock_transport()) as c:
+            res = p.fetch(ref, "", c)
+        assert res.ok and res.api_title and "Program Manager" in res.api_title
+        assert "<" not in res.jd_text and "Developer Programs" in res.jd_text
+        assert "program management" in res.jd_text
+
 
 # ---------- 引擎：落库 / 断点续跑 / 重试上限 / 统计 ----------
 
@@ -257,6 +485,14 @@ class TestEngine:
         ("营销推广专员（网易智邮）", "网易", "https://campus.163.com/app/job/position?id=103"),
         ("无关岗位", "网易", "https://campus.163.com/app/job/position?id=103"),
         ("未知站岗位", "某公司", "https://jobs.example.com/position/1"),  # 无 provider → 不选入
+        # ---- B2 新 provider 行（批量/续跑/attempts 测试免费覆盖新 provider） ----
+        ("用户体验设计师", "阿里巴巴", "https://talent.alibaba.com/off-campus/position-detail?positionId=12345678"),
+        ("腾讯新闻视觉设计师", "腾讯", "https://careers.tencent.com/jobdesc.html?postId=1234567890"),
+        ("美团优选视觉设计师", "美团", "https://zhaopin.meituan.com/web/position/detail?jobUnionId=1000234"),
+        ("Payments Product Designer", "Stripe", "https://job-boards.greenhouse.io/stripe/jobs/1234567"),
+        ("China Product Designer", "Acme", "https://jobs.lever.co/acme/1f2e3d4c-5b6a-7890-abcd-ef1234567890"),
+        ("Senior Product Designer", "Linear", "https://jobs.ashbyhq.com/linear/8b9a2c1d-3e4f-5a6b-7c8d-9e0f1a2b3c4d"),
+        ("Program Manager", "NVIDIA", "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/Program-Manager_R12345"),
     ]
 
     def test_run_writes_jd_and_log(self, con):
@@ -266,7 +502,7 @@ class TestEngine:
             "SELECT search_text FROM job_postings WHERE title = '广告大模型研究员'"
         ).fetchone()["search_text"]
         out = EnrichmentEngine(con, transport=mock_transport(), sleep=lambda s: None).run(limit=50)
-        assert out["total_ok"] == 4
+        assert out["total_ok"] == 11
         assert out["total_no_match"] == 1
         row = con.execute(
             "SELECT description, search_text FROM job_postings WHERE title = '广告大模型研究员'"
@@ -282,13 +518,16 @@ class TestEngine:
             "SELECT provider, COUNT(*) n FROM jd_enrich_log WHERE status='ok' GROUP BY provider"
         ).fetchall())
         assert log.get("byteportal") == 2 and log.get("zhiye") == 1 and log.get("netease163") == 1
+        # B2 七个新 provider 各自 ok 一条（13 行 - 6 旧行 = 7 新行全 ok）
+        for pid in ("alibaba", "tencent", "meituan", "greenhouse", "lever", "ashby", "workday"):
+            assert log.get(pid) == 1, f"{pid}: {log.get(pid)}"
         # 163 审计字段：api_title/match_mode 落账，串岗可追溯
         audit = con.execute(
             "SELECT api_title, match_mode FROM jd_enrich_log WHERE provider='netease163' AND status='ok'"
         ).fetchone()
         assert audit["api_title"] and audit["match_mode"] == "exact"
         st = EnrichmentEngine(con).stats()
-        assert st["with_jd"] == 4 and st["active_jobs"] == 6
+        assert st["with_jd"] == 11 and st["active_jobs"] == 13
 
     def test_resume_after_interrupt(self, con):
         """断点续跑：limit=2 跑一半（模拟杀进程），再跑处理剩余——状态全在库内。"""
@@ -297,7 +536,7 @@ class TestEngine:
         first = eng.run(limit=2)
         assert first["total_ok"] + first["total_no_match"] == 2  # no_match 也占名额
         second = eng.run(limit=50)
-        assert second["total_ok"] + first["total_ok"] == 4
+        assert second["total_ok"] + first["total_ok"] == 11
         third = eng.run(limit=50)  # 全部 ok 后不再重复处理
         assert third["total_ok"] == 0
 
@@ -415,11 +654,11 @@ def test_enrichment_endpoints(tmp_path, monkeypatch):
         finally:
             con.close()
         r = c.post("/api/enrichment/run", json={"limit": 50})
-        assert r.status_code == 200 and r.json()["total_ok"] == 4, r.text
+        assert r.status_code == 200 and r.json()["total_ok"] == 11, r.text
         assert "重新运行匹配" in r.json()["match_stale_hint"]
         st = c.get("/api/enrichment/stats").json()
-        assert st["with_jd"] == 4
-        job = [j for j in c.get("/api/jobs", params={"limit": 10}).json()["items"]
+        assert st["with_jd"] == 11
+        job = [j for j in c.get("/api/jobs", params={"limit": 50}).json()["items"]
                if j["title"] == "广告大模型研究员"][0]
         # 已补全的岗位再单条补全 → 拒绝（幂等保护）
         r2 = c.post(f"/api/jobs/{job['id']}/enrich")

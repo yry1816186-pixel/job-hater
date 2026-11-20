@@ -1,0 +1,14 @@
+{
+ "jobPostingInfo": {
+  "title": "Program Manager - Developer Programs",
+  "startDateTime": "2026-10-01T00:00:00+00:00",
+  "startDate": "2026-10-01",
+  "jobDescription": "&lt;p&gt;NVIDIA is searching for a Program Manager to support our Developer Programs team in China. You will manage program logistics, coordinate cross-functional stakeholders, and drive operational excellence.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;What you&amp;rsquo;ll be doing:&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Own end-to-end program management for developer events&lt;/li&gt;&lt;li&gt;Coordinate with engineering, marketing, and partner teams&lt;/li&gt;&lt;li&gt;Track program metrics and report to leadership&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;&lt;strong&gt;Requirements:&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Bachelor's degree or equivalent experience&lt;/li&gt;&lt;li&gt;3+ years of program or project management experience&lt;/li&gt;&lt;li&gt;Fluent Mandarin and professional English&lt;/li&gt;&lt;/ul&gt;",
+  "jobRequisitionLocation": {
+   "descriptor": {"__typename": "CountryCityJobRequisitionLocationDescriptor", "country": "China", "city": "Shanghai"}
+  },
+  "location": "China, Shanghai",
+  "additionalLocations": [],
+  "externalUrl": "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/China-Shanghai/Program-Manager--Developer-Programs-_R12345"
+ }
+}

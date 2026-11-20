@@ -1,0 +1,17 @@
+{
+ "status": 1,
+ "msg": null,
+ "data": {
+  "jobUnionId": "1000234",
+  "name": "视觉设计师",
+  "jobDuty": "1、负责美团优选营销活动的视觉设计，包括大促页面、运营素材与品牌视觉输出。\n2、与运营、产品协作，保证视觉方案的高效落地与一致性。",
+  "jobRequirement": "1、本科及以上学历，设计类相关专业，2027届毕业生。\n2、熟练使用 Figma / Photoshop / Illustrator，具备较强的视觉表达能力。\n3、有电商或本地生活行业设计实习经验者优先。",
+  "jobStatus": "000",
+  "jobFamily": "设计",
+  "workYear": "不限",
+  "cityList": [{"name": "北京"}],
+  "department": [{"name": "到家事业群"}],
+  "refreshTime": 1760000000000,
+  "firstPostTime": 1759000000000
+ }
+}

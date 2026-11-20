@@ -1,0 +1,24 @@
+{
+ "Code": 200,
+ "Data": {
+  "Count": 2,
+  "Posts": [
+   {
+    "PostId": "1234567890",
+    "RecruitPostName": "27586-视觉设计师（CDG）",
+    "Responsibility": "负责腾讯新闻客户端的视觉设计工作，包括日常运营设计、品牌活动设计与大促视觉方案。",
+    "Requirement": "设计类专业本科及以上学历。",
+    "LocationName": "深圳",
+    "PostURL": "https://careers.tencent.com/jobdesc.html?postId=1234567890"
+   },
+   {
+    "PostId": "1234567891",
+    "RecruitPostName": "25871-品牌设计师（IEG）",
+    "Responsibility": "负责游戏品牌视觉设计。",
+    "Requirement": "本科及以上学历。",
+    "LocationName": "上海",
+    "PostURL": "https://careers.tencent.com/jobdesc.html?postId=1234567891"
+   }
+  ]
+ }
+}

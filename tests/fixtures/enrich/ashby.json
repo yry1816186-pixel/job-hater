@@ -1,0 +1,44 @@
+{
+ "jobs": [
+  {
+   "id": "8b9a2c1d-3e4f-5a6b-7c8d-9e0f1a2b3c4d",
+   "title": "Senior Product Designer",
+   "jobUrl": "https://jobs.ashbyhq.com/linear/8b9a2c1d-3e4f-5a6b-7c8d-9e0f1a2b3c4d",
+   "location": "Shanghai, China",
+   "secondaryLocations": [],
+   "workplaceType": "Hybrid",
+   "isListed": true,
+   "isRemote": false,
+   "employmentType": "FullTime",
+   "descriptionPlain": "Linear is looking for a senior product designer to craft the future of our China-facing surfaces. You will own discovery through delivery for a core product area, partnering closely with engineering.\n\nYou will also help evolve our design system and raise the craft bar across the team.",
+   "publishedAt": "2026-09-01T00:00:00.000Z",
+   "compensation": {
+    "compensationTiers": [
+     {
+      "components": [
+        {
+          "compensationType": "salary",
+          "interval": "1 YEAR",
+          "minValue": 400000,
+          "maxValue": 600000,
+          "currencyCode": "CNY"
+        }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "c1d2e3f4-0a1b-2c3d-4e5f-6a7b8c9d0e1f",
+   "title": "Brand Designer",
+   "jobUrl": "https://jobs.ashbyhq.com/linear/c1d2e3f4-0a1b-2c3d-4e5f-6a7b8c9d0e1f",
+   "location": "Remote",
+   "workplaceType": "Remote",
+   "isListed": true,
+   "isRemote": true,
+   "employmentType": "FullTime",
+   "descriptionPlain": "Own Linear's brand visual language across product marketing surfaces.",
+   "publishedAt": "2026-10-05T00:00:00.000Z"
+  }
+ ]
+}

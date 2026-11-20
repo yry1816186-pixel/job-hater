@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jobhater"
-version = "3.1.0"
+# 3.2.0（微信雷达批次）当时漏改本文件（changelog 有版、pyproject 停在 3.1.0）；
+# 3.3.0 收编 B1+B2+B3 并修正该漏账。
+version = "3.3.0"
 description = "Job Hater — 本地优先的中国求职全流程管理系统（发现→匹配→投递→跟踪→面试→Offer）"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -80,6 +82,11 @@ target-version = "py310"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# providers.py 底部的 B2 子模块 import 必须晚于全部公共定义（子模块反向
+# import 本模块的名字，晚加载使循环引用安全）——E402 是该设计的必然产物。
+"jobhater/services/enrich/providers.py" = ["E402"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI 惯用法：Depends()/Query() 在参数默认位调用是官方模式

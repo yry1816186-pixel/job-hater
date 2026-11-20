@@ -1,0 +1,35 @@
+{
+ "id": "1f2e3d4c-5b6a-7890-abcd-ef1234567890",
+ "text": "Product Designer (China)",
+ "hostedUrl": "https://jobs.lever.co/acme/1f2e3d4c-5b6a-7890-abcd-ef1234567890",
+ "createdAt": 1760000000000,
+ "descriptionPlain": "Acme is looking for a product designer to own our China market surfaces. You will work with a small, senior team shipping weekly.",
+ "description": "",
+ "descriptionPlainHtml": "",
+ "additionalPlain": "",
+ "lists": [
+  {
+   "text": "Requirements",
+   "content": "&lt;ul&gt;&lt;li&gt;Portfolio demonstrating end-to-end product thinking&lt;/li&gt;&lt;li&gt;Fluency in Figma and design systems&lt;/li&gt;&lt;li&gt;Business-level English and native Mandarin&lt;/li&gt;&lt;/ul&gt;"
+  },
+  {
+   "text": "Benefits",
+   "content": "&lt;p&gt;Competitive salary, equity, and 15 days of annual leave.&lt;/p&gt;"
+  }
+ ],
+ "categories": {
+  "team": "Design",
+  "department": "Product",
+  "location": "Shanghai",
+  "commitment": "Full-time",
+  "allLocations": ["Shanghai", "Remote (CN)"]
+ },
+ "workplaceType": "hybrid",
+ "country": "China",
+ "salaryRange": {
+  "currency": "cny",
+  "interval": "per-month-salary",
+  "min": 25000,
+  "max": 40000
+ }
+}

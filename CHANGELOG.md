@@ -4,8 +4,13 @@
 
 ## [Unreleased]
 
-v4.0「证据与供给」批次启动（蓝图见 docs/V4_BLUEPRINT.md）。B1 JD 补全引擎：
-治第一病灶「89% 存量岗无 JD 正文」——匹配引擎此前只能打在标题上。
+## [3.3.0] - 2026-11-20
+
+v4.0「证据与供给」批次推进（蓝图见 docs/V4_BLUEPRINT.md）：**B1 JD 补全引擎** +
+**B2 大厂/国际 ATS provider** + **B3 判活阶梯**。端点知识自 career-ops（MIT，
+72k★）移植——该仓库是 v4 蓝图 §2.2 的 E3 借鉴源。B1 治第一病灶「89% 存量岗
+无 JD 正文」；B2 把补全面从六路扩到十三路（存量 ~2000 条 other-URL 岗的主干道）；
+B3 让死岗在投递前被零成本识别下线（保守判死：误杀真岗严格劣于多一次不确定）。
 
 ### Added
 - **JD 补全 provider 注册表**（`jobhater/services/enrich/providers.py`）：六路
@@ -26,19 +31,54 @@ v4.0「证据与供给」批次启动（蓝图见 docs/V4_BLUEPRINT.md）。B1 J
   URL+无正文+attempts<3，进程随时可杀重启自动续）；per-host 节流 1.2s；
   网络名额与记账分离（列表页/短链只记账不占名额，防新行饿死可直读旧行）；
   补全后同步重建 FTS search_text；账本表 `jd_enrich_log`（迁移 0005）。
+- **B2 大厂官方源 provider×3**（`providers_cn.py`，career-ops 移植）：
+  - `alibaba`：详情 `POST /position/detail`（自铸无状态 XSRF 对，career-ops
+    实测语义）+ 列表 URL 搜索反查（`/position/search`）；
+  - `tencent`：`GET /tencentcareer/api/post/ByPostId` + `/post/Query` 反查；
+  - `meituan`：`POST /api/official/job/getJobDetail` + `getJobList` 反查
+    （嵌套分页 `{page:{pageNo}}`，平铺页码被服务端静默忽略——career-ops 实测）。
+  搜索反查与 163 同构：exact 优先 / fuzzy 须 ≥6 字符且比例 ≥0.6 / 脏 ID 兜底
+  走标题搜索；api_title+match_mode 落账可审计。
+- **B2 国际 ATS provider×4**（`providers_ats.py`，career-ops 移植，外企在华岗
+  常用 Greenhouse/Workday）：`greenhouse`（单岗端点，content 双重编码 HTML 两遍
+  解码）、`lever`（descriptionPlain+lists 拼接）、`ashby`（board 级单文档+ID
+  大小写不敏感比对）、`workday`（CXS 单岗端点+WAF 关键头+tenant 正则锚定）。
+  SSRF 防线同 B1：固定 API host + 路径段严格字符集（禁 `..`/`%2F`）+ 拒绝重定向。
+- **B3 判活阶梯**（`jobhater/services/liveness.py`，career-ops liveness 设计移植）：
+  - Tier1 provider API 判活：官方业务下线码（阿里 content:null / 腾讯 E1005 /
+    美团 jobStatus 001 / Workday 403 S22 / 通用 404/410）→ expired；
+    **Lever 404 显式不判死**（机密岗假阴性，career-ops 实测）；
+  - Tier2 静态页硬关键词（中英双语保守词表，含 has-been-filled 双 guard、
+    closed 复合词 guard）；JS 渲染站正文不足 → 如实 uncertain；
+  - 保守立场贯穿：429/5xx/超时/结构不明一律 uncertain；判死只动 active 岗，
+    不自动复活；凭据账本表 `job_liveness_log`（迁移 0007：verdict/code/evidence/
+    checked_at，复查调度以 checked_at 为准）。
 - **API**：`POST /api/jobs/{id}/enrich`（单条，详情页「拉取 JD 原文」）、
   `POST /api/enrichment/run`（批量，limit≤500，支持 provider 定向）、
-  `GET /api/enrichment/stats`（覆盖率与逐 provider 账本）。
-- **CLI**：`job-hater enrich [--limit N] [--provider ID] [--stats]`。
-- **测试**（24 例）：六 provider 真实响应 fixture 回放（tests/fixtures/enrich/）、
-  URL 解析安全（仿冒域/列表页/非法 ID）、163 标题防串岗、断点续跑、重试
-  上限、定向运行饿死回归、百度相对重定向解析、API 端点全链。
+  `GET /api/enrichment/stats`（覆盖率与逐 provider 账本）；
+  新增 `POST /api/jobs/{id}/liveness`、`POST /api/liveness/run`、
+  `GET /api/liveness/stats`。
+- **CLI**：`job-hater enrich [--limit N] [--provider ID] [--stats]`；
+  新增 `job-hater liveness [--limit N] [--job-id ID] [--stats]`。
+- **测试**（70 例，新增 46）：六 provider 真实响应 fixture 回放 +
+  七个新 provider fixture（按 career-ops 文档化响应形态构造）回放、URL 解析
+  安全（仿冒域/列表页/非法 ID/路径穿越）、163 防串岗、断点续跑、重试上限、
+  定向运行饿死回归、判活保守性（每 provider 死/活/不确定三态 + 传输故障
+  不判死 + guard 词表）、API 端点全链。
 
-### 验收证据（LIVE，真实库 2026-09-23）
-- 存量批量补全 296+ 条全成功（zhiye 60+199、字节 20、mihoyo 6、163 11），
-  覆盖率 24.4%→30.4% 起步，六路 provider 定向清尾运行中；
+### 验收证据（LIVE，真实库 2026-09-23 / 2026-11-20）
+- B1 存量批量补全 296+ 条全成功（zhiye 60+199、字节 20、mihoyo 6、163 11），
+  后续六路定向清尾累计 602+ 条、~40 万字符 JD 正文入库，覆盖率 24.4%→40%+；
 - 节流实测 ~1.2s/条符合设计；百度死链 3 条被正确识别（官方 404）；
-- 全量门禁：226 pytest / ruff 全绿。
+- B2 LIVE（2026-11-20，真实库 9890 岗）：**落地修正三处**——存量阿里岗全在
+  campus-talent 子域且须用 campus_official_site channel（社招 channel 对 campus
+  ID 返回 content=null 假死）；腾讯 634 条存量在 join.qq.com 投递站（无 postId，
+  走搜索反查）；空结果容器 null+统计键在场（datas=null/Posts=null）是合法空结果。
+  抽查命中：alibaba 6 条真实 JD 入库、meituan 3 条；
+- B3 LIVE：美团 jobStatus=001 官方下线码判死全链验证（status=expired +
+  reject_reason + job_liveness_log 三处一致）；SPA 站静态页层如实 uncertain；
+  迁移 0007 在真实库 v6→v7 干净应用；
+- 全量门禁：287 pytest / ruff 全绿。
 
 ## [3.2.0] - 2026-09-22
 

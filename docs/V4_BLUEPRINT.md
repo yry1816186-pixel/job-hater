@@ -82,8 +82,29 @@ ESCO/O*NET 技能本体 + 自建中文标题→职业映射（LLM 离线生成+�
   wechat 复用深挖通道。存量批量补全 LIVE：602+ 条成功、~40 万字符 JD 正文入库，
   覆盖率 24.4%→~40%+（清尾批次后）；对抗评审 P0/P1 全修（串岗防线/attempts 闸/
   节流下沉/装饰性断言）。
-- **B2 中国大厂官方源 provider**：SourceAdapter 契约升级为 BaseScraper 模式（稳定原生 job_id、完整性对账、页数硬顶、退避限速），接阿里/腾讯/美团/字节飞书四源起步。（163 搜索反查模式已在 B1 验证，推广到列表页形态存量的 alibaba 1001/tencent 634/meituan 365 条）
-- **B3 判活阶梯**：投递前零成本确认岗位存活，死链标 expired。（百度 provider 已识别官方 404→「岗位已下线」，baidu 3 条死岗 LIVE 验证）
+- **B2 中国大厂官方源 provider** ✅（2026-11-20，v3.3.0，LIVE_VERIFIED）：阿里/腾讯/
+  美团三路详情直读 provider + 列表 URL 搜索反查（163 模式：exact 优先/fuzzy 过闸/
+  api_title+match_mode 落账）；同批移植国际 ATS 四路（Greenhouse/Lever/Ashby/
+  Workday 单岗详情端点，外企在华岗）。端点规格来源 career-ops（MIT）providers/*.mjs +
+  liveness-api.mjs（2026-07/11 活体验证），fixture 按其文档化形态构造，移植见
+  `jobhater/services/enrich/providers_cn.py` / `providers_ats.py`。字节飞书已在 B1
+  覆盖（byteportal）；BaseScraper 整板扫描（fetch 全板入池）留后续批次。
+  LIVE 落地修正（2026-11-20，真实库 9890 岗）：①存量阿里岗全在 **campus-talent
+  子域**且 channel 必须用 campus_official_site（社招 channel 对 campus ID 返回
+  content=null 假死——不修正会把活岗判死）；②腾讯 634 条存量在 join.qq.com
+  投递站（resume.html?k=令牌），只走搜索反查；③空结果容器为 null+统计键在场
+  （阿里 campus datas=null / 腾讯 Posts=null）是合法空结果，不是结构漂移。
+  LIVE 抽查：alibaba 6 条 ok（真实 JD 入库）、meituan 3 条 ok、官方下线码
+  （美团 001）判死路径全链验证（status/reject_reason/判活账本三处一致）。
+- **B3 判活阶梯** ✅（2026-11-20，v3.3.0，LIVE_VERIFIED）：`jobhater/services/liveness.py`——
+  Tier1 官方业务码（阿里 content:null / 腾讯 E1005 / 美团 jobStatus 001 /
+  Workday 403 S22 / 通用 404/410；**Lever 404 显式不判死**=机密岗假阴性）+
+  Tier2 静态页中英硬关键词（has-been-filled 双 guard、closed 复合词 guard）；
+  保守立场贯穿（429/5xx/超时/正文不足一律 uncertain，判死只动 active 岗不自动
+  复活）；账本 `job_liveness_log`（迁移 0007）；CLI `liveness` + API 三端点。
+  百度 /jobs/404 哨兵判死保留自 B1（LIVE 验证 3 条）。LIVE 抽查（2026-11-20）：
+  美团 001 官方下线码判死全链验证（status=expired + reject_reason + 账本一致）；
+  SPA 站（zhiye 等）静态页层如实 uncertain；4655 条 active 待批扫。
 - **B4 匹配证据卡**：精排输出「简历证据 span ↔ JD 原文 span」对，收件箱/详情页可展开。
 - **验收（量化）**：JD 正文覆盖率 11%→≥70%（B1 后 active 池 ~40%，≥70% 需 B2 列表页
   存量搜索反查落地——FACT：URL 形态统计 other=2303 条在 B2 范围）；每条匹配分可展开到

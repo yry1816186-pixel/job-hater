@@ -41,6 +41,10 @@ def main(argv: list[str] | None = None) -> int:
     p_enrich.add_argument("--limit", type=int, default=50, help="本次最多处理条数")
     p_enrich.add_argument("--provider", default=None, help="只跑指定 provider（byteportal/zhiye/…）")
     p_enrich.add_argument("--stats", action="store_true", help="只看覆盖率统计，不跑补全")
+    p_live = sub.add_parser("liveness", help="判活：官方接口+静态页双阶梯确认岗位存活，死岗标 expired")
+    p_live.add_argument("--limit", type=int, default=20, help="本次最多检查条数")
+    p_live.add_argument("--job-id", default=None, help="只查单个岗位")
+    p_live.add_argument("--stats", action="store_true", help="只看判活统计，不检查")
     p_jobs = sub.add_parser("jobs", help="列出/检索岗位")
     p_jobs.add_argument("--q", default="", help="检索词")
     p_jobs.add_argument("--limit", type=int, default=30)
@@ -223,6 +227,34 @@ def main(argv: list[str] | None = None) -> int:
                       f"（正文 {s['jd_chars']} 字符）")
             if out["total_ok"]:
                 print("提示：匹配结果基于旧数据——运行 `job-hater match` 或在总览页重新匹配。")
+            return 0
+
+        if args.cmd == "liveness":
+            from jobhater.services.liveness import LivenessService
+
+            svc = LivenessService(con)
+            if args.stats:
+                st = svc.stats()
+                print(f"active 且带链接 {st['active_with_url']} 岗，从未判活 {st['never_checked']}；"
+                      f"已判：{st['verdicts']}")
+                return 0
+            if args.job_id:
+                out = svc.probe(args.job_id)
+                if not out.get("ok"):
+                    print(f"❌ {out.get('error')}", file=sys.stderr)
+                    return 2
+                mark = {"active": "✅ 在招", "expired": "⏹ 已下线", "uncertain": "❓ 不确定"}[out["verdict"]]
+                suffix = "（已标记 expired）" if out["status_changed"] else ""
+                print(f"{mark} · {out['title']} [{out['code']}]{suffix}")
+                if out["evidence"]:
+                    print(f"   证据：{out['evidence']}")
+                return 0
+            out = svc.run(limit=args.limit)
+            c = out["counts"]
+            print(f"检查 {out['checked']} 岗：在招 {c['active']}，下线 {c['expired']}，"
+                  f"不确定 {c['uncertain']}")
+            for e in out["expired_jobs"]:
+                print(f"  ⏹ {e['title']} [{e['code']}] {e['job_id']}")
             return 0
 
         if args.cmd == "jobs":

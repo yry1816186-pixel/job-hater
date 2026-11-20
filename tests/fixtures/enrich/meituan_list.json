@@ -1,0 +1,26 @@
+{
+ "status": 1,
+ "data": {
+  "list": [
+   {
+    "jobUnionId": "1000234",
+    "name": "视觉设计师",
+    "jobDuty": "1、负责美团优选营销活动的视觉设计。",
+    "jobRequirement": "1、本科及以上学历，设计类相关专业。",
+    "cityList": [{"name": "北京"}],
+    "jobFamily": "设计",
+    "workYear": "不限"
+   },
+   {
+    "jobUnionId": "1000235",
+    "name": "资深视觉设计师",
+    "jobDuty": "负责到店综合业务视觉设计。",
+    "jobRequirement": "三年以上经验。",
+    "cityList": [{"name": "上海"}],
+    "jobFamily": "设计",
+    "workYear": "3-5年"
+   }
+  ],
+  "page": {"totalCount": 2, "pageNo": 1, "pageSize": 100}
+ }
+}

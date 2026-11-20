@@ -1,0 +1,16 @@
+{
+ "Code": 200,
+ "Msg": null,
+ "Data": {
+  "PostId": "1234567890",
+  "RecruitPostName": "27586-视觉设计师（CDG）",
+  "Responsibility": "负责腾讯新闻客户端的视觉设计工作，包括日常运营设计、品牌活动设计与大促视觉方案；与产品和交互设计师协作，保证设计方案的统一性与高品质落地。",
+  "Requirement": "设计类专业本科及以上学历；具备扎实的视觉表达与品牌设计能力；熟练使用 Figma、Photoshop、Illustrator 等工具；有互联网产品视觉设计实习经验者优先。",
+  "LocationName": "深圳",
+  "CountryName": "中国",
+  "CategoryName": "设计类",
+  "BGName": "CDG",
+  "RequireWorkYearsName": "不限",
+  "LastUpdateTime": "2026年10月15日"
+ }
+}

@@ -73,6 +73,8 @@ job-hater fetch --companies mihoyo        # 官网信源抓取（米哈游/百�
 | `job-hater applications --profile <id>` | 列出投递跟踪（含岗位名） |
 | `job-hater transition <投递ID> <状态> [--note]` | 推进状态（漏斗内可跳步） |
 | `job-hater confirm-applied <投递ID> [--channel 官网]` | 用户确认已投递（投后阶段唯一入口） |
+| `job-hater enrich [--limit N] [--provider ID] [--stats]` | 批量补全 JD 正文（十三路官方源直读，可中断续跑） |
+| `job-hater liveness [--limit N] [--job-id ID] [--stats]` | 判活：确认岗位存活，死岗标 expired（保守判死） |
 | `job-hater fetch [--companies mihoyo,baidu,netease] [--dry-run]` | 官网信源抓取 |
 | `job-hater migrate-v1 <旧data目录>` | 从 v1 (Campus-Job-Agent) JSON 一次性迁移 |
 | `job-hater backup` | WAL checkpoint 后复制数据库到 exports/backups |
@@ -99,6 +101,8 @@ job-hater fetch --companies mihoyo        # 官网信源抓取（米哈游/百�
 | 浏览器助手 | Chrome/Edge 扩展：页面上一键抓 JD 入库（见 `extension/README.md`） | ✅ |
 | 文件导入 | JSON（数组或 `{"jobs":[...]}`） | ✅ |
 | 校招官网适配器 | `job-hater fetch --companies mihoyo,baidu,netease`（米哈游/百度/网易校招官网公开 JSON API，来自 MIT 项目 wenke-radar 的移植，限速抓取） | ✅ 已接入 |
+| **JD 补全引擎**（v3.3） | `job-hater enrich`：对已入库岗位按官网链接直读 JD 全文——十三路 provider（字节系/北森/米哈游/百度/网易/微信 + **阿里/腾讯/美团** + **Greenhouse/Lever/Ashby/Workday** 国际 ATS，端点规格移植自 MIT 项目 career-ops）；断点续跑、per-host 限速、标题反查防串岗审计 | ✅ 阿里/腾讯/美团详情直读 + 列表 URL 标题反查 |
+| **判活阶梯**（v3.3） | `job-hater liveness`：投递前零成本确认岗位存活——Tier1 官方接口业务码（下线码/404）→ Tier2 静态页硬关键词（中英双语）；保守判死（429/5xx/模糊一律「不确定」，绝不误杀真岗），死岗标 expired 并留证据账本 | ✅ |
 | 官方 API 适配器 | `SourceAdapter` 插件契约（capabilities/health_check/rate_policy/provenance） | 契约就绪，适配器按源渐进接入 |
 | MCP | `job-hater-mcp`（19 个工具，官方 SDK：新增 stats_overview/stats_salary/ats_scan/reminders_list） | ✅ Agent 增强层 |
 

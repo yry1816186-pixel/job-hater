@@ -13,6 +13,12 @@
 - netease163：URL 的 id 是**批次 projectId 非岗位 ID**——走列表 API + 标题匹配
 - wechat：复用公众号深挖通道 fetch_articles（requests 缺失时如实降级）
 
+B2 增补（v3.2，career-ops MIT 移植，见 providers_cn.py / providers_ats.py）：
+- alibaba / tencent / meituan：详情 URL 直读 + 列表 URL 搜索反查（163 模式），
+  同时实现 check() 供判活 Tier1（官方业务下线码：content:null / E1005 / jobStatus 001）
+- greenhouse / lever / ashby / workday：国际 ATS 单岗详情端点（外企在华岗），
+  check() 判活含 Lever 404 假阴性与 Workday 403 S22 撤回码的显式建模
+
 安全立场（与仓库合规红线一致）：
 - 只请求注册表内的官方域（host 后缀精确到点号边界），不抓商业招聘板；
 - 详情 API 一律免浏览器、免签名、免登录；ID 注入前字符集校验；
@@ -25,6 +31,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
+
+import httpx
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -39,6 +47,20 @@ class JdResult:
     api_title: str | None = None
     error: str = ""
     match_mode: str = ""  # exact | fuzzy | ""（直读型 provider 无匹配语义）
+
+
+@dataclass
+class LivenessVerdict:
+    """判活结果（B3，保守立场：拿不准就是 uncertain，绝不猜死）。
+
+    career-ops liveness 同款设计：误判死（expired）会经 dedup 过滤永久埋掉真岗，
+    严格劣于多一次 uncertain——所以 expired 只允许出自确定性信号（官方 404/410、
+    ATS 业务下线码、静态页硬关键词），code 记录机器依据、evidence 记录人读证据。
+    """
+
+    verdict: str  # active | expired | uncertain
+    code: str = ""
+    evidence: str = ""
 
 
 @dataclass
@@ -278,6 +300,23 @@ class BaiduProvider:
             return JdResult(False, error="SSR 页未解析到 JD 块（结构变更或岗位下线）")
         return JdResult(True, jd_text=jd)
 
+    def check(self, ref: JobRef, http: HttpLike) -> LivenessVerdict:
+        """B3 判活 Tier1：官方 /jobs/404 哨兵与裸 404 是确定性下线，其余保守。"""
+        try:
+            res = self.fetch(ref, "", http)
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            if code in (404, 410):
+                return LivenessVerdict("expired", code="http_gone", evidence=f"HTTP {code}")
+            return LivenessVerdict("uncertain", code=f"http_{code}", evidence=f"HTTP {code}")
+        except (httpx.RequestError, ValueError) as e:
+            return LivenessVerdict("uncertain", code="transport_error", evidence=str(e)[:120])
+        if res.ok:
+            return LivenessVerdict("active", code="baidu_ssr_ok", evidence="SSR JD 块可读")
+        if "岗位已下线" in res.error:
+            return LivenessVerdict("expired", code="baidu_404_sentinel", evidence=res.error)
+        return LivenessVerdict("uncertain", code="baidu_unparsed", evidence=res.error[:120])
+
 
 # ---------- 网易 163（URL id 是批次 → 列表 API + 标题匹配） ----------
 
@@ -384,6 +423,19 @@ class WechatArticleProvider:
         return JdResult(True, jd_text=art.text.strip(), api_title=art.title or None)
 
 
+# B2 增补的七个 provider 在子模块实现（career-ops 移植）。import 必须放在本模块
+# 全部公共定义之后：子模块反向 import 本模块的名字（JdResult/_join_jd 等），此时
+# 本模块已注册进 sys.modules，循环引用安全（E402 因此豁免）。
+from jobhater.services.enrich.providers_ats import AshbyProvider as _AshbyProvider  # noqa: E402
+from jobhater.services.enrich.providers_ats import (
+    GreenhouseProvider as _GreenhouseProvider,  # noqa: E402
+)
+from jobhater.services.enrich.providers_ats import LeverProvider as _LeverProvider  # noqa: E402
+from jobhater.services.enrich.providers_ats import WorkdayProvider as _WorkdayProvider  # noqa: E402
+from jobhater.services.enrich.providers_cn import AlibabaProvider as _AlibabaProvider  # noqa: E402
+from jobhater.services.enrich.providers_cn import MeituanProvider as _MeituanProvider  # noqa: E402
+from jobhater.services.enrich.providers_cn import TencentProvider as _TencentProvider  # noqa: E402
+
 PROVIDERS: list[JdProvider] = [
     BytePortalProvider(),
     ZhiyeProvider(),
@@ -391,6 +443,13 @@ PROVIDERS: list[JdProvider] = [
     BaiduProvider(),
     Netease163Provider(),
     WechatArticleProvider(),
+    _AlibabaProvider(),
+    _TencentProvider(),
+    _MeituanProvider(),
+    _GreenhouseProvider(),
+    _LeverProvider(),
+    _AshbyProvider(),
+    _WorkdayProvider(),
 ]
 
 

@@ -183,6 +183,10 @@ class EnrichmentRunIn(BaseModel):
     provider: str | None = None
 
 
+class LivenessRunIn(BaseModel):
+    limit: int = Field(20, ge=1, le=200)
+
+
 class ApplicationIn(BaseModel):
     job_id: str
     profile_id: str
@@ -711,6 +715,29 @@ def register_routes(app: FastAPI) -> None:
         from jobhater.services.enrich import EnrichmentEngine
 
         return EnrichmentEngine(con).stats()
+
+    # ---------- 判活阶梯（v4 B3：官方接口+静态页双阶梯，死岗标 expired） ----------
+
+    @app.post("/api/jobs/{job_id}/liveness")
+    def liveness_probe(job_id: str, con=Depends(get_con)):
+        from jobhater.services.liveness import LivenessService
+
+        out = LivenessService(con).probe(job_id)
+        if not out.get("ok"):
+            raise HTTPException(404, str(out.get("error")))
+        return out
+
+    @app.post("/api/liveness/run")
+    def liveness_run(body: LivenessRunIn, con=Depends(get_con)):
+        from jobhater.services.liveness import LivenessService
+
+        return LivenessService(con).run(limit=body.limit)
+
+    @app.get("/api/liveness/stats")
+    def liveness_stats(con=Depends(get_con)):
+        from jobhater.services.liveness import LivenessService
+
+        return LivenessService(con).stats()
 
     @app.get("/api/sources")
     def list_sources(con=Depends(get_con)):
