@@ -1,4 +1,4 @@
 # Codex CLI MCP 注册片段——把下面内容并入 ~/.codex/config.toml
 [mcp_servers.job-hater]
-command = "jobhater-mcp"
+command = "job-hater-mcp"
 args = []

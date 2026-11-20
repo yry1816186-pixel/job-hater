@@ -34,11 +34,11 @@ job-hater doctor       # 引擎自检
 
 | 助手 | 技能位置 | 交互入口 | MCP 注册（可选） |
 |------|----------|----------|------------------|
-| Claude Code | `~/.claude/skills/job-hater/` | 说「找工作」或 `/find-jobs` | `claude mcp add job-hater -- jobhater-mcp`；或 `/plugin marketplace add yry1816186-pixel/job-hater` 后装 job-hater 插件（自带 MCP） |
+| Claude Code | `~/.claude/skills/job-hater/` | 说「找工作」或 `/find-jobs` | `claude mcp add job-hater -- job-hater-mcp`；或 `/plugin marketplace add yry1816186-pixel/job-hater` 后装 job-hater 插件（自带 MCP） |
 | Codex CLI | `~/.codex/skills/job-hater/` | 说「帮我找工作」 | 把 `plugin/codex/config-snippet.toml` 并入 `~/.codex/config.toml` |
-| ZCode | `~/.zcode/skills/job-hater/` | 说「找工作」 | MCP 设置添加 stdio 命令 `jobhater-mcp` |
-| DeepSeek Harness (dsh) | 其技能目录（`./install.sh -d <目录>`） | 说「找工作」 | MCP 设置添加 stdio 命令 `jobhater-mcp` |
-| 其他 Agent Skills 宿主 | 任意技能目录 | 说「找工作」 | 任何 MCP 宿主：stdio `jobhater-mcp` |
+| ZCode | `~/.zcode/skills/job-hater/` | 说「找工作」 | MCP 设置添加 stdio 命令 `job-hater-mcp` |
+| DeepSeek Harness (dsh) | 其技能目录（`./install.sh -d <目录>`） | 说「找工作」 | MCP 设置添加 stdio 命令 `job-hater-mcp` |
+| 其他 Agent Skills 宿主 | 任意技能目录 | 说「找工作」 | 任何 MCP 宿主：stdio `job-hater-mcp` |
 
 不装 MCP 也能用：技能手册里每个 MCP 工具都有等价的 `job-hater` CLI 命令，
 助手会用 shell 走完全流程。
@@ -66,7 +66,7 @@ job-hater doctor       # 引擎自检
 ```
 plugin/
 ├── .claude-plugin/plugin.json   # Claude Code 插件清单
-├── .mcp.json                    # 插件自带 MCP 服务器（stdio: jobhater-mcp）
+├── .mcp.json                    # 插件自带 MCP 服务器（stdio: job-hater-mcp）
 ├── skills/job-hater/
 │   ├── SKILL.md                 # 技能主文件（作战手册）
 │   └── references/              # channels.md 四通道打法 / tools.md 工具速查

@@ -68,9 +68,9 @@ foreach ($t in $targets) {
 Write-Host @"
 
 == MCP 服务器注册（可选，装了可用结构化工具；不装也能走 CLI）==
-  Claude Code : claude mcp add job-hater -- jobhater-mcp
+  Claude Code : claude mcp add job-hater -- job-hater-mcp
   Codex CLI   : 把 plugin/codex/config-snippet.toml 内容并入 ~/.codex/config.toml
-  ZCode / dsh : 在 MCP 服务器设置添加 stdio 命令：jobhater-mcp
+  ZCode / dsh : 在 MCP 服务器设置添加 stdio 命令：job-hater-mcp
 
 == 下一步 ==
   对你的 AI 助手说：「帮我找工作」或 /find-jobs —— 它会按 job-hater 技能开战。

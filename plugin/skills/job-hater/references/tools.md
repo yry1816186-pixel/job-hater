@@ -1,7 +1,7 @@
 # 工具速查（MCP 23 个 + CLI 等价）
 
 MCP 优先（结构化、无需 shell）；harness 没接 MCP 时 CLI 全覆盖。
-MCP 服务器：`jobhater-mcp`（stdio）。CLI：`job-hater <命令>`。
+MCP 服务器：`job-hater-mcp`（stdio）。CLI：`job-hater <命令>`。
 工具返回全部是 JSON 字符串；`error` 键 = 失败，原因在值里，如实转告用户。
 
 ## 建档与偏好

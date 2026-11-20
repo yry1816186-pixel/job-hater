@@ -12,7 +12,7 @@
   `references/channels.md` 全领域四通道打法（ATS 公开 API 端点/浏览器+搜索/内置源/
   微信QQ 雷达）、`references/tools.md` 23 工具速查、`/find-jobs` 与
   `/track-applications` 命令、`.claude-plugin/plugin.json` 清单、插件级 `.mcp.json`
-  （stdio `jobhater-mcp`）、仓库根 `marketplace.json`（`claude plugin marketplace add`
+  （stdio `job-hater-mcp`）、仓库根 `marketplace.json`（`claude plugin marketplace add`
   可直接装）、`install.ps1`/`install.sh` 一键安装器（装引擎+技能入检测到的宿主）。
 - **MCP 四工具补口**（代理从零闭环）：`profile_list` / `profile_create`（简历文本
   自动建档，warnings 如实返回）/ `preset_set`（类型校验，非法值退回不静默吞）/

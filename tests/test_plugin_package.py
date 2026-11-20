@@ -59,7 +59,16 @@ class TestPluginStructure:
     def test_mcp_json_shape(self):
         data = json.loads((PLUGIN / ".mcp.json").read_text(encoding="utf-8"))
         srv = data["mcpServers"]["job-hater"]
-        assert srv["command"] == "jobhater-mcp"  # console script，pip 装 [mcp] 后在 PATH
+        # 命令名必须与 pyproject 实际注册的 console script 一致（写错 = 四端 MCP 全挂）
+        assert srv["command"] == self._mcp_script_name()
+
+    @staticmethod
+    def _mcp_script_name() -> str:
+        root = Path(__file__).resolve().parent.parent
+        for line in (root / "pyproject.toml").read_text(encoding="utf-8").splitlines():
+            if "jobhater.mcp_server:main" in line:
+                return line.split("=")[0].strip()
+        raise AssertionError("pyproject 未注册 mcp console script")
 
     def test_skill_frontmatter(self):
         fm = _frontmatter((SKILL / "SKILL.md").read_text(encoding="utf-8"))
@@ -76,7 +85,11 @@ class TestPluginStructure:
         sh = (PLUGIN / "install.sh").read_text(encoding="utf-8")
         for text in (ps1, sh):
             assert "skills" in text and "job-hater" in text
-        assert "jobhater-mcp" in (PLUGIN / ".mcp.json").read_text(encoding="utf-8")
+        # 安装器 MCP 指引、codex 片段与 .mcp.json 的命令名三处一致且与 pyproject 对账
+        name = self._mcp_script_name()
+        for text in (ps1, sh,
+                     (PLUGIN / "codex" / "config-snippet.toml").read_text(encoding="utf-8")):
+            assert name in text
         # 技能源目录名被安装器引用
         assert "skills\\job-hater" in ps1 or "skills/job-hater" in ps1
         assert "skills/job-hater" in sh
