@@ -4,6 +4,34 @@
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-11-21
+
+### Added — 插件形态（本版主线）
+- **`plugin/` 完整插件包**：可装进 Claude Code / Codex CLI / ZCode / DeepSeek Harness
+  或任何 Agent Skills 宿主——`SKILL.md` 作战手册（六步工作流+铁律）、
+  `references/channels.md` 全领域四通道打法（ATS 公开 API 端点/浏览器+搜索/内置源/
+  微信QQ 雷达）、`references/tools.md` 23 工具速查、`/find-jobs` 与
+  `/track-applications` 命令、`.claude-plugin/plugin.json` 清单、插件级 `.mcp.json`
+  （stdio `jobhater-mcp`）、仓库根 `marketplace.json`（`claude plugin marketplace add`
+  可直接装）、`install.ps1`/`install.sh` 一键安装器（装引擎+技能入检测到的宿主）。
+- **MCP 四工具补口**（代理从零闭环）：`profile_list` / `profile_create`（简历文本
+  自动建档，warnings 如实返回）/ `preset_set`（类型校验，非法值退回不静默吞）/
+  `sources_fetch`（内置源抓取+dry_run）。
+- **CLI 闭环**：`job-hater profile list|create`（--resume-file 自动入档）与
+  `job-hater preset`（--role/--city/--type/--salary-min…）——无 Web 无 MCP 也能
+  建档→偏好→导入→匹配全流程。
+
+### Changed — 减防御性阻碍（不降安全底线）
+- Host 白名单**默认放行私网/环回 IP 字面量**：局域网设备 IP 直连开箱即用，不再需要
+  配 `JOBHATER_ALLOWED_HOSTS`；DNS rebinding 防线不变（攻击面是域名 Host，仍走白名单）。
+- 新增 `JOBHATER_GUARD=0` 逃生口：有外层防护（反代/防火墙）的部署可整体关闭本机
+  Host/Origin 闸（启动打警告）。
+- netguard 域名决策缓存（TTL 5 分钟）：判活大池不再每岗双倍 DNS 解析。
+
+### Verified
+- 新增 12 项测试（中间件放开三例/GUARD=0/DNS 缓存/MCP 闭环+边界/CLI 动词/插件包
+  结构八项断言），子集 41 passed；全量门见 CI。
+
 ## [3.6.0] - 2026-11-21
 
 可部署性硬化批次：目标是「陌生人克隆仓库 → 按README部署 → 打开就能用」。

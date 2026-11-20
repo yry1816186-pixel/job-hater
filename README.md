@@ -11,6 +11,21 @@
 
 适用于应届校招、实习、社招、转行；技术/产品/设计/运营/职能/制造/科研各类方向——所有"应届生该怎样""国企更好"式的预设都在你的偏好设置里，不在代码里。
 
+## 装进你的 AI 编程助手（推荐）
+
+在用 Claude Code / Codex CLI / ZCode / DeepSeek Harness（或任何支持 Agent Skills 的 AI 助手）？三条命令把引擎装进去，然后对助手说「帮我找工作」：
+
+```bash
+git clone https://github.com/yry1816186-pixel/job-hater.git
+cd job-hater/plugin
+./install.ps1        # Windows（macOS/Linux：./install.sh）
+```
+
+助手会按内置作战手册执行：读简历建档 → 问清方向/城市/类型（实习/校招/社招）→
+多渠道找岗入库（目标公司 ATS 公开 API + 招聘网站浏览 + 搜索引擎定向 + 微信/QQ
+情报）→ 本地匹配排序（每条带依据）→ 简历/ATS 扫描/面试题 → 投递跟踪到 Offer。
+**绝不代投**；不装 MCP 也能走 CLI 全流程。详见 [plugin/README.md](plugin/README.md)。
+
 ## 快速开始（3 分钟）
 
 **方式一：Docker（零工具链，推荐初次体验）**
@@ -33,13 +48,15 @@ job-hater serve
 
 > 没构建前端就启动也不坏事：`/` 会显示一页构建指引（API 与 CLI 全部可用），构建完刷新即可。
 
-**方式三：只用命令行**
+**方式三：只用命令行**（v3.7 起全流程可闭环，无需 Web）
 
 ```bash
 job-hater doctor                          # 环境自检
+job-hater profile create --resume-file 我的简历.txt   # 建档（简历文本自动提取技能/经历/教育）
+job-hater preset --profile <画像ID> --role 后端 --city 杭州 --type social   # 求职偏好
 job-hater import examples/jobs.example.json   # 导入岗位 JSON（示例文件在仓库 examples/）
 job-hater paste --save --url <链接> < jd.txt   # 从 stdin 粘贴 JD 解析入库
-job-hater match --profile <画像ID>        # 匹配排序榜（画像先经 Web 新手向导或 API 创建）
+job-hater match --profile <画像ID>        # 匹配排序榜（每条带分数与淘汰原因）
 job-hater fetch --companies mihoyo        # 官网信源抓取（米哈游/百度/网易）
 ```
 

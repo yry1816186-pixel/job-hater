@@ -85,6 +85,26 @@ class TestLocalOnlyGuard:
                         headers={"Origin": "http://127.0.0.1.evil.com"})
         assert r.status_code == 403
 
+    def test_private_ip_host_allowed_by_default(self, client):
+        """局域网 IP 直连开箱即用（v3.7）：私网/环回 IP 字面量 Host 默认放行。"""
+        for host in ("192.168.1.5:8787", "10.0.0.8:8787", "172.20.1.4"):
+            r = client.get("/api/health", headers={"Host": host})
+            assert r.status_code == 200, (host, r.status_code)
+
+    def test_public_domain_host_still_rejected(self, client):
+        """私网 IP 放行不等于全开：公网域名 Host 仍走白名单（DNS rebinding 面是域名）。"""
+        r = client.get("/api/health", headers={"Host": "careers.somecompany.com"})
+        assert r.status_code == 400
+
+    def test_guard_env_disables_middleware(self, tmp_path, monkeypatch):
+        """JOBHATER_GUARD=0 逃生口：有外层防护的部署可整体关闭本机安全线。"""
+        config.set_data_dir(tmp_path)
+        monkeypatch.setenv("JOBHATER_GUARD", "0")
+        app = create_app()
+        with TestClient(app) as c:
+            assert c.get("/api/health", headers={"Host": "evil.example.com"}).status_code == 200
+        config.set_data_dir(None)
+
 
 # ---------- 2. 请求体限额 ----------
 
@@ -161,7 +181,25 @@ class TestNetguard:
         monkeypatch.setattr(socket, "getaddrinfo", lambda host, port: [
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0)),
         ])
+        netguard._dns_cache.clear()
         assert netguard.guard_url("https://careers.example.com/jobs/1") is None
+
+    def test_dns_decision_cached(self, monkeypatch):
+        """v3.7 性能：同一主机名重复 URL 只解析一次 DNS（判活大池不再双倍解析）。"""
+        from jobhater.services import netguard
+
+        calls = []
+
+        def fake_getaddrinfo(host, port):
+            calls.append(host)
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+        monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+        netguard._dns_cache.clear()
+        assert netguard.guard_url("https://careers.example.com/jobs/1") is None
+        assert netguard.guard_url("https://careers.example.com/jobs/2") is None
+        assert netguard.guard_url("https://careers.example.com/other") is None
+        assert len(calls) == 1, calls
 
     def test_liveness_private_url_never_fetches(self, tmp_path):
         """判活 Tier2：私网 URL → uncertain+url_blocked，且一个请求都不发。"""

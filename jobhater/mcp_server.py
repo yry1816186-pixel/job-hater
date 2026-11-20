@@ -57,6 +57,126 @@ def profile_get(profile_id: str) -> str:
 
 
 @mcp.tool()
+def profile_list() -> str:
+    """列出全部画像（id/姓名/介绍/偏好数）。只读。第一步永远先调这里拿 profile_id；
+    空库时建画像用 profile_create（可带简历文本自动建档）。"""
+    con = _con()
+    try:
+        ps = ProfileService(con)
+        out = [
+            {
+                "id": p.id, "display_name": p.display_name, "headline": p.headline,
+                "skills": len(ps.list_skills(p.id)), "presets": len(ps.list_presets(p.id)),
+            }
+            for p in ps.list_profiles()
+        ]
+        if not out:
+            return json.dumps(
+                {"hint": "还没有画像——用 profile_create 建立（传简历文本可自动提取技能/经历/教育）"},
+                ensure_ascii=False,
+            )
+        return json.dumps(out, ensure_ascii=False)
+    finally:
+        con.close()
+
+
+@mcp.tool()
+def profile_create(display_name: str = "", headline: str = "", resume_text: str = "") -> str:
+    """建立画像（写库）。给 resume_text 时启发式解析简历自动补技能/经历/教育/项目；
+    warnings 与导入计数如实返回——识别不了的字段请让用户补充，绝不臆造。"""
+    con = _con()
+    try:
+        draft = None
+        warnings: list[str] = []
+        if resume_text.strip():
+            from jobhater.services.resume_import import parse_resume_text
+
+            parsed = parse_resume_text(resume_text)
+            draft = parsed["draft"]
+            warnings = parsed["warnings"]
+            basics = draft.get("basics") or {}
+            display_name = display_name or basics.get("name") or ""
+            headline = headline or basics.get("label") or ""
+        if not display_name.strip():
+            return json.dumps(
+                {"error": "缺少姓名：display_name 与简历文本中的姓名至少提供一个"}, ensure_ascii=False
+            )
+        ps = ProfileService(con)
+        profile = ps.create_profile(display_name.strip(), headline.strip() or None)
+        counts: dict = {}
+        if draft is not None:
+            from jobhater.services.resume import ResumeService
+
+            counts = ResumeService(con).import_json_resume(profile.id, draft)
+        return json.dumps(
+            {
+                "profile_id": profile.id, "display_name": profile.display_name,
+                "imported": counts, "warnings": warnings,
+                "next": "preset_set 设定求职偏好（方向/城市/类型：internship/campus/social），"
+                        "然后多渠道找岗位入库（paste_parse + jobs_import），再 match_run",
+            },
+            ensure_ascii=False, default=str,
+        )
+    finally:
+        con.close()
+
+
+_KNOWN_EMPLOYMENT_TYPES = ("internship", "campus", "social")
+
+
+@mcp.tool()
+def preset_set(
+    profile_id: str,
+    name: str = "求职偏好",
+    target_roles_json: str = "[]",
+    target_cities_json: str = "[]",
+    employment_types_json: str = "[]",
+    salary_min_k: float = 0,
+    min_education: str = "",
+    graduation_year: int = 0,
+    remote_ok: bool = False,
+) -> str:
+    """设定/更新画像的激活求职偏好（写库；匹配的全部依据）。
+    employment_types 取值 internship/campus/social 可多选——社招求职者只给 social；
+    各字段留空/0 = 不限。返回生效后的偏好。"""
+    con = _con()
+    try:
+        ps = ProfileService(con)
+        if ps.get_profile(profile_id) is None:
+            return json.dumps({"error": f"画像不存在: {profile_id}"}, ensure_ascii=False)
+        types = [t for t in json.loads(employment_types_json or "[]") if str(t).strip()]
+        ignored = [t for t in types if t not in _KNOWN_EMPLOYMENT_TYPES]
+        kw: dict = {"name": name}
+        if roles := [r for r in json.loads(target_roles_json or "[]") if str(r).strip()]:
+            kw["target_roles"] = roles
+        if cities := [c for c in json.loads(target_cities_json or "[]") if str(c).strip()]:
+            kw["target_cities"] = cities
+        if valid_types := [t for t in types if t in _KNOWN_EMPLOYMENT_TYPES]:
+            kw["employment_types"] = valid_types
+        if salary_min_k > 0:
+            kw["salary_min_k"] = salary_min_k
+        if min_education.strip():
+            kw["min_education"] = min_education.strip()
+        if graduation_year > 0:
+            kw["graduation_year"] = graduation_year
+        if remote_ok:
+            kw["remote_ok"] = True
+        current = ps.active_preset(profile_id)
+        if current is not None:
+            kw.pop("name", None)  # 更新不动既有名字，只有新建才用传入名
+            preset = ps.update_preset(current.id, **kw) if kw else current
+        else:
+            preset = ps.create_preset(profile_id, **kw)
+            ps.activate_preset(profile_id, preset.id)
+        out = json.loads(preset.model_dump_json())
+        if ignored:
+            out["ignored_types"] = ignored
+        return json.dumps(out, ensure_ascii=False)
+    finally:
+        con.close()
+
+
+@mcp.tool()
 def jobs_search(query: str = "", city: str = "", limit: int = 20) -> str:
     """岗位检索（中文全文+结构化过滤）。只读。"""
     con = _con()
@@ -344,6 +464,36 @@ def reminders_list(profile_id: str = "", include_done: bool = False) -> str:
             "suggestions": rs.suggestions(profile_id=profile_id or None),
         }
         return json.dumps(out, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        con.close()
+
+
+@mcp.tool()
+def sources_fetch(companies_json: str = "[]", dry_run: bool = False) -> str:
+    """从引擎内置官方直读信源抓岗位入库（写库；当前 wenke 源=米哈游/百度/网易校招
+    官网公开接口，偏校招方向）。内置源只是起点——全领域岗位主要靠你在浏览器/搜索里
+    发现后用 paste_parse + jobs_import 入库，任何网站的 JD 都能进。"""
+    con = _con()
+    try:
+        from jobhater.services.sources import WenkeAdapter
+
+        companies = [c for c in json.loads(companies_json or "[]") if str(c).strip()] or None
+        adapter = WenkeAdapter(companies=companies)
+        raw = list(adapter.produce())
+        report = {c: {"ok": r.ok, "message": r.message} for c, r in adapter.last_fetch_report.items()}
+        if dry_run:
+            return json.dumps(
+                {"dry_run": True, "fetched": len(raw), "report": report}, ensure_ascii=False
+            )
+        js = JobService(con)
+        stats = js.ingest(raw, source_id="wenke")
+        out = stats.model_dump()
+        out["report"] = report
+        ok_any = any(r.ok for r in adapter.last_fetch_report.values())
+        js.record_source_health("wenke", ok=ok_any, message=adapter.health_check().message)
+        return json.dumps(out, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
     finally:

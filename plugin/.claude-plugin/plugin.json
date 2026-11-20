@@ -1,0 +1,10 @@
+{
+  "name": "job-hater",
+  "version": "3.7.0",
+  "description": "本地求职操作系统引擎：全领域岗位发现 → JD 解析入库 → 匹配排序 → 简历/ATS 扫描 → 投递跟踪。数据只存用户本机，绝不代投。",
+  "author": { "name": "yry1816186-pixel" },
+  "homepage": "https://github.com/yry1816186-pixel/job-hater",
+  "repository": "https://github.com/yry1816186-pixel/job-hater",
+  "license": "MIT",
+  "keywords": ["job-search", "career", "求职", "校招", "社招", "matching", "resume"]
+}
