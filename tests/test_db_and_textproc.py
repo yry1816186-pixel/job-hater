@@ -137,6 +137,20 @@ def test_parse_salary_variants():
     assert tp.parse_salary("") == (None, None, None)
 
 
+def test_parse_salary_absolute_yuan_and_annual():
+    """绝对元薪资（JSON-LD 结构化数据/招聘文案）与年薪口径——2026-11-21 实战批次。"""
+    # 元/月：JSON-LD baseSalary 提取器规范化后的输出
+    assert tp.parse_salary("9000-15000元/月") == (9.0, 15.0, None)
+    assert tp.parse_salary("10000元/月") == (10.0, 10.0, None)
+    # 元/年：年薪口径折回月薪 k
+    assert tp.parse_salary("120000-180000元/年") == (10.0, 15.0, None)
+    # 万/年、年薪…万：万分支需按 12 个月折算（此前会被当成月薪 100-150k）
+    assert tp.parse_salary("10-15万/年") == (8.3, 12.5, None)
+    assert tp.parse_salary("年薪25-30万") == (20.8, 25.0, None)
+    # 回归护栏：万默认仍是月薪口径
+    assert tp.parse_salary("10-15万") == (100.0, 150.0, None)
+
+
 def test_parse_experience_years():
     assert tp.parse_experience_years("3-5年") == 3.0
     assert tp.parse_experience_years("经验不限") == 0.0

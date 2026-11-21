@@ -121,6 +121,10 @@ _SALARY_WAN_RE = re.compile(
     r"(\d+(?:\.\d+)?)\s*万?\s*[-~–—至]\s*(\d+(?:\.\d+)?)\s*万"
 )
 _SALARY_DAYS_RE = re.compile(r"(\d+(?:\.\d+)?)\s*[-~–—至]?\s*(\d+(?:\.\d+)?)?\s*元?/\s*(天|日)")
+_SALARY_YUAN_MON_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(?:[-~–—至]\s*(\d+(?:\.\d+)?))?\s*元/\s*(月|年)"
+)
+_SALARY_PER_YEAR_RE = re.compile(r"万\s*/\s*年|年薪")
 _SALARY_MONTHS_RE = re.compile(r"(\d{1,2})\s*薪")
 
 
@@ -139,7 +143,19 @@ def parse_salary(
     if m_k := _SALARY_K_RE.search(raw):
         return float(m_k.group(1)), float(m_k.group(2)), months
     if m_w := _SALARY_WAN_RE.search(raw):
-        return float(m_w.group(1)) * 10, float(m_w.group(2)) * 10, months
+        # 「万/年」「年薪…万」是年薪口径——按 12 个月折算回月薪 k，不折算会把 10-15万/年 当成 100-150k/月
+        div = 12.0 if _SALARY_PER_YEAR_RE.search(raw) else 1.0
+        return (
+            round(float(m_w.group(1)) * 10 / div, 1),
+            round(float(m_w.group(2)) * 10 / div, 1),
+            months,
+        )
+    if m_y := _SALARY_YUAN_MON_RE.search(raw):
+        # 绝对元薪资（JSON-LD 结构化数据/「8000-12000元/月」招聘文案）——k = 元/1000；元/年再除以 12
+        lo = float(m_y.group(1))
+        hi = float(m_y.group(2)) if m_y.group(2) else lo
+        div = 12000.0 if m_y.group(3) == "年" else 1000.0
+        return round(lo / div, 1), round(hi / div, 1), months
     if m_d := _SALARY_DAYS_RE.search(raw):
         lo = float(m_d.group(1))
         hi = float(m_d.group(2)) if m_d.group(2) else lo
