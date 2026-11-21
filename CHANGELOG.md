@@ -4,6 +4,26 @@
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-11-21
+
+### Added — 采集引擎化（webharvest：发现管线从 agent 手写脚本升级为引擎能力）
+- **新服务 `services/webharvest.py`**：种子 URL → 放大抓取（沿「相关职位」链接
+  BFS，depth≤2/max_pages 硬顶）→ 三级提取（猎聘站点适配器 / JSON-LD
+  `schema.org/JobPosting` 通用标准 / 通用启发式标 needs_review）→
+  按来源域名溯源入库。v3.7 实战验证的提取管线（41 抓 40 成）正式产品化。
+- **MCP 23→25 工具**：`jobs_fetch_preview`（单页提取预览，只读）+
+  `jobs_harvest`（批量采集入库，dry_run 支持；failed/degraded 明细如实返回）。
+- **CLI**：`job-hater harvest --url/--urls --depth --max-pages [--dry-run]`。
+- **安全面**：SSRF 闸延续（私网/非 http 零请求）；robots.txt 遵守（每主机缓存，
+  403 按全站不抓）；per-host 限速 1.2s 复用判活层 `_ThrottledClient`；
+  反爬拦截如实降级绝不规避；三级全败如实返回失败原因不臆造。
+- **无偏向设计**：适配器按站点结构不按方向/地域；JSON-LD 适配器对任何内嵌
+  schema.org/JobPosting 的站点生效（全行业通用）；幂等（已入库 URL 自动跳过，
+  可反复重跑）。
+- 新增 18 项测试（三提取路径/@graph 变体/放大器/SSRF 零请求/robots 两态/限速/
+  幂等重跑/入库溯源/MCP 往返/CLI 参数）；技能手册改打法（种子→harvest 为标准
+  路径，手写提取器指引删除）。
+
 ## [3.7.0] - 2026-11-21
 
 ### Added — 插件形态（本版主线）

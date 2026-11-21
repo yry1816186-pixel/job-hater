@@ -1,4 +1,4 @@
-# 工具速查（MCP 23 个 + CLI 等价）
+# 工具速查（MCP 25 个 + CLI 等价）
 
 MCP 优先（结构化、无需 shell）；harness 没接 MCP 时 CLI 全覆盖。
 MCP 服务器：`job-hater-mcp`（stdio）。CLI：`job-hater <命令>`。
@@ -23,6 +23,8 @@ MCP 服务器：`job-hater-mcp`（stdio）。CLI：`job-hater <命令>`。
 | `jobs_search(query?, city?, limit?)` | 中文全文+结构化检索 | `job-hater jobs --q …` |
 | `jobs_get(job_id, profile_id?)` | 岗位详情+JD 原文（带 profile_id 附匹配解释） | — |
 | `sources_fetch(companies_json?, dry_run?)` | 内置 wenke 校招官方源抓取入库 | `job-hater fetch [--dry-run]` |
+| `jobs_fetch_preview(url)` | 单页提取预览（只读）：方法/字段/相关链接数 | `job-hater harvest --url <URL> --dry-run` |
+| `jobs_harvest(urls_json, depth?, max_pages?, dry_run?)` | **网页采集主力**：种子 URL→放大→提取→入库（幂等；degraded 如实降级） | `job-hater harvest --urls 种子.txt --depth 1` |
 | — | JD 补全（大厂官方端点，按 URL） | `job-hater enrich --limit 50` |
 | — | 判活（死岗标 expired） | `job-hater liveness --limit 50` |
 | — | 文件收件箱扫描（表格/截图/文档） | `job-hater inbox --scan` |

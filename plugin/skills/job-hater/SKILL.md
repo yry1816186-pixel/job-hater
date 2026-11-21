@@ -61,6 +61,8 @@ description: 本地求职操作系统引擎：全领域岗位发现→JD 解析�
 - **内置源**：`sources_fetch`（wenke 校招官方接口）+ `job-hater enrich`（大厂 JD 补全）
 - **ATS 公开板**：greenhouse / lever / ashby 无登录直读 JSON——外企与科技公司
   全领域覆盖，社招校招都有
-- **你的浏览器与搜索是主力**：任何网站、任何行业的 JD → `paste_parse` → `jobs_import`
-  （解析+去重+入库一条龙）
+- **网页采集主力**：搜索拿到 1 条招聘详情页 URL → `jobs_harvest(urls_json=[该URL])`
+  引擎自动沿「相关职位」链接放大（一次 30-40 条，提取+限速+去重+入库全内置）。
+  批量前可 `jobs_fetch_preview(url)` 验单页质量。非标准页面退回
+  `paste_parse` → `jobs_import`
 - **文件收件箱**：用户拖表格/截图/文件 → `job-hater inbox --scan`

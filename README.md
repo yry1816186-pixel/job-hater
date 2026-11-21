@@ -22,8 +22,8 @@ cd job-hater/plugin
 ```
 
 助手会按内置作战手册执行：读简历建档 → 问清方向/城市/类型（实习/校招/社招）→
-多渠道找岗入库（目标公司 ATS 公开 API + 招聘网站浏览 + 搜索引擎定向 + 微信/QQ
-情报）→ 本地匹配排序（每条带依据）→ 简历/ATS 扫描/面试题 → 投递跟踪到 Offer。
+多渠道找岗入库（目标公司 ATS 公开 API + 网页采集引擎：1 条种子 URL 自动放大
+30-40 条 + 搜索引擎定向 + 微信/QQ 情报）→ 本地匹配排序（每条带依据）→ 简历/ATS 扫描/面试题 → 投递跟踪到 Offer。
 **绝不代投**；不装 MCP 也能走 CLI 全流程。详见 [plugin/README.md](plugin/README.md)。
 
 ## 快速开始（3 分钟）
@@ -56,6 +56,7 @@ job-hater profile create --resume-file 我的简历.txt   # 建档（简历文�
 job-hater preset --profile <画像ID> --role 后端 --city 杭州 --type social   # 求职偏好
 job-hater import examples/jobs.example.json   # 导入岗位 JSON（示例文件在仓库 examples/）
 job-hater paste --save --url <链接> < jd.txt   # 从 stdin 粘贴 JD 解析入库
+job-hater harvest --url <招聘详情页链接>       # 网页采集：1 条种子自动放大 30-40 条（v3.8）
 job-hater match --profile <画像ID>        # 匹配排序榜（每条带分数与淘汰原因）
 job-hater fetch --companies mihoyo        # 官网信源抓取（米哈游/百度/网易）
 ```
