@@ -79,6 +79,13 @@ def main(argv: list[str] | None = None) -> int:
     p_preset.add_argument("--min-education", default="", help="最低学历")
     p_preset.add_argument("--graduation-year", type=int, default=0)
 
+    p_harvest = sub.add_parser("harvest", help="网页采集：种子 URL→放大抓取→提取→入库（幂等可重跑）")
+    p_harvest.add_argument("--urls", help="种子 URL 文件（每行一条；1 条即可，引擎自动沿相关职位链接放大）")
+    p_harvest.add_argument("--url", default=None, help="单条种子 URL（与 --urls 二选一）")
+    p_harvest.add_argument("--depth", type=int, default=1, help="相关职位链接跟进跳数（0-2，默认 1）")
+    p_harvest.add_argument("--max-pages", type=int, default=50, help="本次最多抓取页数（默认 50）")
+    p_harvest.add_argument("--dry-run", action="store_true", help="只提取不入库")
+
     args = parser.parse_args(argv)
     if args.data_dir:
         config.set_data_dir(args.data_dir)
@@ -413,6 +420,47 @@ def main(argv: list[str] | None = None) -> int:
                 f"✅ 偏好「{preset.name}」已生效：角色={preset.target_roles} 城市={preset.target_cities}"
                 f" 类型={preset.employment_types} 薪资底线={preset.salary_min_k or '不限'}K"
             )
+            return 0
+
+        if args.cmd == "harvest":
+            from pathlib import Path  # noqa: PLC0415 —— 与 profile 处理器同款局部导入
+
+            from jobhater.services.webharvest import WebHarvestService
+
+            seeds = []
+            if args.url:
+                seeds.append(args.url)
+            if args.urls:
+                seeds.extend(
+                    ln.strip() for ln in Path(args.urls).read_text(encoding="utf-8").splitlines()
+                    if ln.strip() and not ln.startswith("#")
+                )
+            if not seeds:
+                print("❌ 需要 --url <URL> 或 --urls <文件>（每行一条种子 URL）", file=sys.stderr)
+                return 2
+            svc = WebHarvestService(con)
+            try:
+                out = svc.harvest(seeds, depth=args.depth, max_pages=args.max_pages,
+                                  ingest=not args.dry_run)
+            finally:
+                svc.close()
+            if args.dry_run:
+                for raw in out["jobs"][:10]:
+                    print(f"  · {raw['title']} @ {raw.get('company') or '（公司未识别）'}"
+                          f" {raw.get('city') or ''} {raw.get('salary') or ''}")
+                print(f"dry-run：提取 {len(out['jobs'])} 条，未入库"
+                      f"（页面 {out['pages_fetched']}，方法 {out['methods']}，"
+                      f"降级 {len(out['degraded'])}，失败 {len(out['failed'])}）")
+                return 0
+            ig = out.get("ingest", {})
+            print(f"页面 {out['pages_fetched']}：提取 {out['extracted']}"
+                  f"（方法 {out['methods']}），入库 {ig.get('added', 0)}，"
+                  f"去重精 {ig.get('deduped_exact', 0)} 近 {ig.get('deduped_near', 0)}，"
+                  f"拒绝 {ig.get('rejected', 0)}，跳过已入库 {out['skipped_existing']}")
+            for d in out["degraded"][:8]:
+                print(f"  ⚠️ {d['reason'][:60]} — {d['url'][:70]}")
+            for f in out["failed"][:8]:
+                print(f"  ✗ 提取失败 {f['reason'][:40]} — {f['url'][:70]}")
             return 0
 
         if args.cmd == "confirm-applied":

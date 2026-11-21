@@ -500,6 +500,55 @@ def sources_fetch(companies_json: str = "[]", dry_run: bool = False) -> str:
         con.close()
 
 
+@mcp.tool()
+def jobs_fetch_preview(url: str) -> str:
+    """单页岗位提取预览（只读不落库）：给一条招聘详情页 URL，返回提取出的结构化
+    岗位（方法/字段/质量）+ 页内相关职位链接数。批量采集前先用它验质量；
+    提取失败时返回原因（如实降级，不规避反爬）。"""
+    con = _con()
+    try:
+        from jobhater.services.webharvest import WebHarvestService
+
+        svc = WebHarvestService(con)
+        try:
+            return json.dumps(svc.preview(url), ensure_ascii=False)
+        finally:
+            svc.close()
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        con.close()
+
+
+@mcp.tool()
+def jobs_harvest(
+    urls_json: str, depth: int = 1, max_pages: int = 50, dry_run: bool = False
+) -> str:
+    """批量网页采集（写库，除非 dry_run）：给种子 URL 数组（1 条即可）——引擎自动
+    抓取→三级提取（站点适配器/JSON-LD/通用启发式）→沿「相关职位」链接放大
+    （depth=1 通常一次 30-40 条）→按来源域名溯源入库（幂等，已入库 URL 自动跳过）。
+    返回 pages_fetched/extracted/ingest/failed/degraded 明细；robots 与反爬拦截
+    如实记录在 degraded，绝不规避。安全闸：仅 http(s) 公网目标。"""
+    con = _con()
+    try:
+        from jobhater.services.webharvest import WebHarvestService
+
+        urls = [u for u in json.loads(urls_json or "[]") if str(u).strip()]
+        if not urls:
+            return json.dumps({"error": "urls_json 需为非空 URL 数组"}, ensure_ascii=False)
+        svc = WebHarvestService(con)
+        try:
+            out = svc.harvest(urls, depth=depth, max_pages=max_pages, ingest=not dry_run)
+        finally:
+            svc.close()
+        out["dry_run"] = dry_run
+        return json.dumps(out, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    finally:
+        con.close()
+
+
 def main() -> None:
     apply_all()
     mcp.run()
