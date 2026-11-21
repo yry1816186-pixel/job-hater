@@ -170,12 +170,27 @@ def _extract_jsonld(html: str, url: str) -> tuple[dict | None, str]:
     bs = out.get("baseSalary") or {}
     if isinstance(bs, dict):
         val = bs.get("value") or {}
-        unit = bs.get("unitText") or val.get("unitText") or ""
-        lo, hi = val.get("minValue"), val.get("maxValue")
-        if lo and hi:
-            salary = f"{lo}-{hi}{unit}".strip()
-        elif lo or hi:
-            salary = f"{lo or hi}{unit}".strip()
+        unit_raw = str(bs.get("unitText") or val.get("unitText") or "").strip()
+        currency = str(
+            out.get("currency") or bs.get("currency") or val.get("currency") or ""
+        ).strip().upper()
+        # schema.org 标准单位→中文薪资单位（parse_salary 可解析）；其余（K 等）原样透传
+        unit_txt = {"MONTH": "元/月", "YEAR": "元/年", "WEEK": "元/周",
+                    "DAY": "元/天", "HOUR": "元/时"}.get(unit_raw.upper(), unit_raw)
+        if currency and currency not in ("CNY", "RMB"):
+            # 非 CNY：如实保留币种（不换汇、不臆造）——解析器不识别→None，诚实降级
+            unit_txt = currency
+        def _num(x):
+            try:
+                return float(x)
+            except (TypeError, ValueError):
+                return None
+        lo_v, hi_v = _num(val.get("minValue")), _num(val.get("maxValue"))
+        if lo_v is not None or hi_v is not None:
+            lo_v = lo_v if lo_v is not None else hi_v
+            hi_v = hi_v if hi_v is not None else lo_v
+            salary = (f"{lo_v:g}-{hi_v:g}{unit_txt}" if hi_v != lo_v
+                      else f"{lo_v:g}{unit_txt}").strip()
     if not title or not company:
         return None, "jsonld: 缺 title/company"
     if len(desc) < MIN_JSONLD_DESC_CHARS:
@@ -203,10 +218,19 @@ def _extract_generic(html: str, url: str) -> tuple[dict | None, str]:
         if m:
             city, title, company = (s.strip() for s in m.groups())
         else:
-            m2 = re.match(r"(.{2,40}?)招聘[信息\s]*[-–—|]\s*(.+)$", tp)
-            if m2:
-                title = m2.group(1).strip()
-                company = m2.group(2).strip()[:60]
+            # 国内 SEO 站常见格式「岗位名招聘_公司名招聘-平台名」(高校人才网等):
+            # 下划线前段是岗位、第二段才是公司——必须先于宽泛的横线规则匹配,
+            # 否则横线规则会把平台名误当公司名(2026-11-21 LIVE 实测暴露)
+            m0 = re.match(r"(.{2,40}?)招聘[_·](.{2,40}?)招聘", tp)
+            if m0:
+                title = m0.group(1).strip()
+                # 部分站点的公司段带 #/| 等装饰尾巴(「研究所#招聘」)——剥掉再入库
+                company = m0.group(2).strip().rstrip("#|、丨")[:60] or company
+            else:
+                m2 = re.match(r"(.{2,40}?)招聘[信息\s]*[-–—|]\s*(.+)$", tp)
+                if m2:
+                    title = m2.group(1).strip()
+                    company = m2.group(2).strip()[:60]
     # og 标签兜底
     if not title:
         m = re.search(r'property="og:title"[^>]*content="([^"]+)"', html)

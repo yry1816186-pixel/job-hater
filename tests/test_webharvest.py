@@ -100,6 +100,27 @@ class TestExtractors:
         assert raw["salary"] == "5-8K"
         assert raw["published_at"] == "2026-11-20"
 
+    def test_jsonld_salary_absolute_month_normalized(self):
+        """unitText=MONTH 的绝对元薪资→规范化「元/月」（parse_salary 可解析），
+        非 CNY 币种如实保留原样（不换汇不臆造）。"""
+        posting = {"@type": "JobPosting", "title": "数据专员",
+                   "description": "负责业务数据的日常整理、核对与报表输出，维护数据台账，"
+                                  "配合各部门完成取数需求并保障口径一致。",
+                   "hiringOrganization": {"name": "示例数据服务公司（虚构）"},
+                   "baseSalary": {"value": {"minValue": 9000.0, "maxValue": 15000.0,
+                                            "unitText": "MONTH"}}}
+        html = ('<script type="application/ld+json">'
+                + json.dumps(posting, ensure_ascii=False) + "</script>")
+        raw, method, _ = extract_page(html, "https://x.example.com/a")
+        assert method == "jsonld" and raw["salary"] == "9000-15000元/月"
+        posting["baseSalary"]["currency"] = "USD"
+        posting["baseSalary"]["value"] = {"minValue": 90000, "maxValue": 120000,
+                                          "unitText": "YEAR"}
+        html2 = ('<script type="application/ld+json">'
+                 + json.dumps(posting, ensure_ascii=False) + "</script>")
+        raw2, _, _ = extract_page(html2, "https://x.example.com/b")
+        assert raw2["salary"] == "90000-120000USD"
+
     def test_jsonld_graph_container(self):
         """@graph 包裹的 JobPosting（部分站点的嵌套写法）也能命中。"""
         posting = {"@type": "JobPosting", "title": "行政专员",
@@ -119,6 +140,28 @@ class TestExtractors:
         assert raw["title"] == "产品运营专员"
         assert raw["company"] == "启明科技（虚构）"
         assert "岗位职责" in raw["description"]
+
+    def test_generic_seo_underscore_title(self):
+        """「岗位名招聘_公司名招聘-平台名」(高校人才网等 SEO 站):
+        公司必须是下划线第二段, 不能让横线规则把平台名误当公司名。"""
+        html = ('<html><head><title>财务部会计招聘_山东省科创集团有限公司招聘-'
+                '高校人才网|高才网</title></head><body>'
+                '<h2>岗位职责</h2><p>负责集团日常会计核算、报表编制与税务申报，'
+                '配合审计并维护财务系统数据准确性。</p>'
+                '<h2>任职要求</h2><p>本科及以上，会计相关专业，两年以上经验。</p></body></html>')
+        raw, method, review = extract_page(html, "https://www.gaoxiaojob.com/job/detail/1.html")
+        assert method == "generic" and review is True
+        assert raw["title"] == "财务部会计"
+        assert raw["company"] == "山东省科创集团有限公司"
+        assert "高校人才网" not in (raw["company"] or "")
+        assert "岗位职责" in raw["description"]
+        # 公司段尾部装饰字符（「研究所#招聘」）一并剥离
+        html2 = ('<html><head><title>会计岗招聘_农业农村部食物与营养发展研究所#招聘-'
+                 '高校人才网|高才网</title></head><body>'
+                 '<h2>岗位职责</h2><p>负责研究所日常会计核算与资金管理，编制月度报表，'
+                 '配合年度审计并管理科研经费台账，开展预算执行分析与财务档案维护。</p></body></html>')
+        raw2, _, _ = extract_page(html2, "https://www.gaoxiaojob.com/job/detail/2.html")
+        assert raw2["company"] == "农业农村部食物与营养发展研究所"
 
     def test_extraction_failure_is_honest(self):
         raw, why, _ = extract_page("<html><body>登录后查看详情</body></html>",
