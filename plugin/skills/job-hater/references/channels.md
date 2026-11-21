@@ -32,6 +32,12 @@
 | Ashby | `https://api.ashbyhq.com/posting-api/job-board/{org}` | 招聘页 URL `jobs.ashbyhq.com/{org}` |
 | Workday | CXS 端点复杂（tenant+shard），别手拼——把岗位 URL 入库后交给 `job-hater enrich` | `{tenant}.{shard}.myworkdayjobs.com` |
 
+**2026-11 实战注记**：端点本身稳定（duolingo 板 54 岗 LIVE 抓通），但 slug
+发现是真瓶颈——盲猜板名（sheingroup/snap/canva）全部空。正确顺序：先搜
+「公司名 careers」拿到招聘页 URL，从 URL 提取 slug，再调 API；拿不到招聘页
+URL 的公司直接放弃走通道 C。地理/方向错配也是常态（对国内城市求职者，
+ATS 板命中低），按宁缺毋滥原则只入库真相关条目。
+
 打法：用户给目标公司清单 → 每家搜「公司名 + careers / 招聘」→ 从招聘页 URL 识别
 ATS 类型和 slug → curl 列表 API → 把每条转成 raw job
 （title/company/city/salary/description/url，字段名见 tools.md 的 jobs_import）
@@ -43,18 +49,28 @@ ATS 类型和 slug → curl 列表 API → 把每条转成 raw job
 
 你的浏览器能力和搜索引擎在这里是最大优势：
 
-1. **招聘平台浏览**（BOSS 直聘、智联招聘、前程无忧、猎聘、拉勾、实习僧、
-   国聘、牛客……）：
-   - 未登录能浏览的部分：正常读，按人工节奏（每页停留几秒），绝不规避反检测。
-   - 需要登录才能看的（BOSS 多数操作、沟通）：**如实告诉用户请他/她自己登录**，
-     登录后你继续只读浏览。绝不替用户输密码。
-   - 搜到的 JD 原文 → `paste_parse`（自动抽 title/company/城市/薪资/要求）→
-     草稿缺字段时补齐 → `jobs_import`。
-2. **搜索引擎定向**：`site:zhaopin.com 岗位名 城市`、`公司名 招聘`、
-   `"岗位名" 招聘 2027` 等查询直接命中岗位详情页 → 读正文 → paste_parse 入库。
-3. **公司官网 careers 页**：目标公司官网招聘栏目 → 列表页逐条读 → 入库。
-   若发现是 greenhouse/lever/ashby 托管，切换到通道 B 更快。
-4. **地方政府/高校就业网**（全领域社招/校招公告）一样走读页→parse→import。
+**站点可读性实况（2026-11 LIVE 实测，决定打法）**：
+
+| 站点 | 详情页 | 搜索列表页 | 自动化浏览器 |
+|------|--------|-----------|--------------|
+| 猎聘 liepin.com | ✅ curl 可读（正文在 `data-selector="job-intro-content"`） | ❌ JS 壳 | ❌ 被弹空白页（勿规避，如实降级） |
+| 51job / zhaopin | ❌ JS 壳+拦截 | ❌ | ❌ |
+| BOSS 直聘 | ❌ 需登录 | ❌ | ❌ CDP 全拦 |
+| 公司官网 careers / 政府人才网 | 多为静态 ✅ | — | — |
+
+**因此主力打法是「搜索引擎换直链 + curl 读详情」**：
+
+1. **搜索引擎定向**：`site:liepin.com 武汉 运营`、`岗位名 城市 招聘 详情` 等
+   查询拿到 `/job/{id}.shtml` 直链 → curl 逐条读（1.2s 间隔）→ 提取
+   title/company/city/salary + 正文 → raw job → `jobs_import`。
+   缺字段的**从页面元信息补齐**（标题格式 `【城市 岗位名招聘】-公司名招聘信息`
+   可直接解析出三要素），正文-only 的 `paste_parse` 会诚实拒绝——别硬塞。
+2. **详情页里的「相关职位」链接是放大器**：一个详情页平均带 10+ 个同类岗位
+   直链——已验证 1 跳爬取 40/40 全解析成功，是最高效的规模化路径。
+3. **未登录能浏览的部分**：正常读，按人工节奏，绝不规避反检测；需要登录的
+   （BOSS 多数操作）**如实告诉用户请他/她自己登录**，绝不替用户输密码。
+4. **公司官网 careers 页 / 地方人才网**（全领域社招公告，多为静态页）：
+   逐条读 → 入库。发现是 greenhouse/lever/ashby 托管时切换通道 B 更快。
 
 ## 通道 D：私域情报（微信/QQ 招聘雷达，仅 Windows）
 
