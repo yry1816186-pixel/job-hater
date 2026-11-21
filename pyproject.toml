@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "jobhater"
 # 3.2.0（微信雷达批次）当时漏改本文件（changelog 有版、pyproject 停在 3.1.0）；
 # 3.3.0 收编 B1+B2+B3 并修正该漏账；3.4.0 computer use 采集批次；3.5.0 发现层全网化。
-version = "3.8.0"
+version = "3.8.1"
 description = "Job Hater — 本地优先的中国求职全流程管理系统（发现→匹配→投递→跟踪→面试→Offer）"
 readme = "README.md"
 requires-python = ">=3.10"

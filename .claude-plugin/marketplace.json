@@ -5,7 +5,7 @@
       "name": "job-hater",
       "source": "./plugin",
       "description": "本地求职操作系统引擎：全领域岗位发现→JD 解析→匹配→简历/ATS→投递跟踪。数据只存本机，绝不代投。",
-      "version": "3.8.0"
+      "version": "3.8.1"
     }
   ]
 }

@@ -56,7 +56,14 @@ ATS 类型和 slug → curl 列表 API → 把每条转成 raw job
 | 猎聘 liepin.com | ✅ curl 可读（正文在 `data-selector="job-intro-content"`） | ❌ JS 壳 | ❌ 被弹空白页（勿规避，如实降级） |
 | 51job / zhaopin | ❌ JS 壳+拦截 | ❌ | ❌ |
 | BOSS 直聘 | ❌ 需登录 | ❌ | ❌ CDP 全拦 |
+| 高校人才网 gaoxiaojob.com | ✅ curl 可读（通用启发式命中；标题格式 `岗位名招聘_公司名招聘-平台名`；详情页混有专题/页脚链接会如实失败） | ❌ | — |
+| 实习僧 shixiseng.com | ✅ curl 可读（无 JSON-LD，走通用启发式） | ❌ | — |
 | 公司官网 careers / 政府人才网 | 多为静态 ✅ | — | — |
+
+**JSON-LD 情报（2026-11-21 实测）**：国内招聘站普遍**不**内嵌
+schema.org/JobPosting（高校人才网、实习僧均无）——猎聘详情页例外（内嵌且
+提取器已实弹验证）。国内打法的提取主力是**猎聘适配器 + 通用启发式**，
+JSON-LD 通道主要面向国际板（greenhouse/lever 等外企 careers 页）。
 
 **主力打法（v3.8 起引擎内置，零手写脚本）**：
 
